@@ -65,16 +65,20 @@ export class TimelineView extends View {
         // Create timeline container
         this.timelineEl = mainContainer.createEl('div', { cls: 'timeline-container' });
         
+        // Create splitter
+        const splitter = mainContainer.createEl('div', { cls: 'timeline-splitter' });
+        
         // Create unscheduled tasks area
         const unscheduledArea = mainContainer.createEl('div', { cls: 'unscheduled-tasks' });
-        unscheduledArea.style.flex = '0 0 auto'; // Don't allow flex growth
-        unscheduledArea.style.maxHeight = '20vh'; // Limit height to 20% of viewport height
         unscheduledArea.createEl('h6', { text: 'Unscheduled Tasks' });
         const dropZone = unscheduledArea.createEl('div', { 
             cls: 'unscheduled-drop-zone',
             attr: { 'data-time': 'unscheduled' }
         });
         this.setupDropZone(dropZone);
+
+        // Setup splitter drag functionality
+        this.setupSplitter(splitter, this.timelineEl, unscheduledArea);
 
         // Create time slots
         this.createTimeSlots();
@@ -546,6 +550,16 @@ export class TimelineView extends View {
             text: block.title
         });
 
+        // Add resize handles
+        const topHandle = blockEl.createEl('div', { cls: 'time-block-handle top-handle' });
+        const bottomHandle = blockEl.createEl('div', { cls: 'time-block-handle bottom-handle' });
+
+        // Setup drag handlers for the block
+        this.setupBlockDragHandlers(blockEl, block.id);
+        
+        // Setup resize handlers
+        this.setupBlockResizeHandlers(blockEl, block.id, topHandle, bottomHandle);
+
         this.setupBlockDropZone(blockEl, block.id);
 
         block.tasks.forEach(taskKey => {
@@ -732,8 +746,8 @@ export class TimelineView extends View {
     private getTaskIdentity(taskText: string): TaskIdentity {
         const metadata = TaskParser.parseTask(taskText, this.plugin.settings);
         
-        // Try to get plugin ID
-        const idMatch = taskText.match(/�� ([a-zA-Z0-9]+)/);
+        // Try to get plugin ID using unicode escape sequence
+        const idMatch = taskText.match(/\u0000\u0000 ([a-zA-Z0-9]+)/);
         if (idMatch) {
             return {
                 identifier: idMatch[1],
@@ -753,6 +767,155 @@ export class TimelineView extends View {
             originalContent: taskText,
             metadata
         };
+    }
+
+    private setupBlockDragHandlers(blockEl: HTMLElement, blockId: string) {
+        let isDragging = false;
+        let startY = 0;
+        let startTop = 0;
+        let originalBlock: TimeBlock;
+
+        blockEl.addEventListener('mousedown', (e: MouseEvent) => {
+            // Only start drag if clicking the title area
+            const target = e.target as HTMLElement;
+            if (!target.classList.contains('time-block-handle') && 
+                !target.classList.contains('timeline-task')) {
+                isDragging = true;
+                startY = e.clientY;
+                startTop = blockEl.offsetTop;
+                originalBlock = {...this.timeBlocks.get(blockId)!};
+                blockEl.addClass('dragging');
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (!isDragging) return;
+
+            const deltaY = e.clientY - startY;
+            const newTop = startTop + deltaY;
+            
+            // Convert pixel position to hours
+            const newStartHour = Math.round(newTop / this.hourHeight);
+            const duration = originalBlock.endHour - originalBlock.startHour;
+            
+            // Ensure block stays within timeline bounds
+            if (newStartHour >= 0 && newStartHour + duration <= 24) {
+                blockEl.style.top = `${newStartHour * this.hourHeight}px`;
+                
+                // Update block times
+                const block = this.timeBlocks.get(blockId)!;
+                block.startHour = newStartHour;
+                block.endHour = newStartHour + duration;
+            }
+        });
+
+        document.addEventListener('mouseup', async () => {
+            if (isDragging) {
+                isDragging = false;
+                blockEl.removeClass('dragging');
+                await this.saveTimeBlocks();
+            }
+        });
+    }
+
+    private setupBlockResizeHandlers(
+        blockEl: HTMLElement, 
+        blockId: string, 
+        topHandle: HTMLElement, 
+        bottomHandle: HTMLElement
+    ) {
+        let isResizing = false;
+        let resizeType: 'top' | 'bottom' = 'top';
+        let startY = 0;
+        let startTop = 0;
+        let startHeight = 0;
+        let originalBlock: TimeBlock;
+
+        const startResize = (e: MouseEvent, type: 'top' | 'bottom') => {
+            isResizing = true;
+            resizeType = type;
+            startY = e.clientY;
+            startTop = blockEl.offsetTop;
+            startHeight = blockEl.offsetHeight;
+            originalBlock = {...this.timeBlocks.get(blockId)!};
+            blockEl.addClass('resizing');
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        topHandle.addEventListener('mousedown', (e) => startResize(e, 'top'));
+        bottomHandle.addEventListener('mousedown', (e) => startResize(e, 'bottom'));
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (!isResizing) return;
+
+            const deltaY = e.clientY - startY;
+            const block = this.timeBlocks.get(blockId)!;
+
+            if (resizeType === 'top') {
+                const newTop = startTop + deltaY;
+                const newStartHour = Math.round(newTop / this.hourHeight);
+                
+                if (newStartHour >= 0 && newStartHour < block.endHour) {
+                    blockEl.style.top = `${newStartHour * this.hourHeight}px`;
+                    blockEl.style.height = `${(block.endHour - newStartHour) * this.hourHeight}px`;
+                    block.startHour = newStartHour;
+                }
+            } else {
+                const newHeight = startHeight + deltaY;
+                const newEndHour = Math.round((startTop + newHeight) / this.hourHeight);
+                
+                if (newEndHour <= 24 && newEndHour > block.startHour) {
+                    blockEl.style.height = `${(newEndHour - block.startHour) * this.hourHeight}px`;
+                    block.endHour = newEndHour;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', async () => {
+            if (isResizing) {
+                isResizing = false;
+                blockEl.removeClass('resizing');
+                await this.saveTimeBlocks();
+            }
+        });
+    }
+
+    private setupSplitter(
+        splitter: HTMLElement, 
+        timelineEl: HTMLElement, 
+        unscheduledEl: HTMLElement
+    ) {
+        let isResizing = false;
+        let startY = 0;
+        let startHeight = 0;
+
+        splitter.addEventListener('mousedown', (e: MouseEvent) => {
+            isResizing = true;
+            startY = e.clientY;
+            startHeight = timelineEl.offsetHeight;
+            document.body.addClass('timeline-resizing');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+            if (!isResizing) return;
+
+            const deltaY = e.clientY - startY;
+            const newHeight = Math.max(200, startHeight + deltaY); // Minimum height of 200px
+            
+            timelineEl.style.height = `${newHeight}px`;
+            timelineEl.style.flex = '0 0 auto';
+            unscheduledEl.style.flex = '1 1 auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.removeClass('timeline-resizing');
+            }
+        });
     }
 }
 

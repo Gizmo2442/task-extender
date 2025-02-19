@@ -17,12 +17,30 @@ If your plugin does not need CSS, delete this file.
 
 .timeline-container {
     flex: 1 1 auto;  /* Allow container to grow and shrink */
+    min-height: 200px;
     overflow-y: auto;
     position: relative;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
-    margin: 10px 0;
-    min-height: 0;   /* Allow container to shrink below content size */
+    margin: 10px 0 0 0;
+}
+
+.timeline-splitter {
+    height: 6px;
+    background: var(--background-secondary);
+    margin: 8px 0;
+    cursor: row-resize;
+    position: relative;
+}
+
+.timeline-splitter:hover {
+    background: var(--interactive-accent);
+    opacity: 0.5;
+}
+
+.timeline-splitter:active {
+    background: var(--interactive-accent);
+    opacity: 0.7;
 }
 
 .time-slot {
@@ -58,11 +76,14 @@ If your plugin does not need CSS, delete this file.
 }
 
 .unscheduled-tasks {
-    margin-top: 10px;
+    flex: 0 0 auto;
+    min-height: 100px;
+    max-height: 40vh;
+    margin-bottom: 10px;
     padding: 10px;
     border: 1px solid var(--background-modifier-border);
     border-radius: 4px;
-    overflow-y: auto;  /* Add scrolling if content overflows */
+    overflow-y: auto;
 }
 
 .unscheduled-drop-zone {
@@ -204,4 +225,46 @@ If your plugin does not need CSS, delete this file.
 
 .timeline-controls button:hover {
     background: var(--background-modifier-hover);
+}
+
+.time-block-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: row-resize;
+    z-index: 1;
+}
+
+.time-block-handle.top-handle {
+    top: -3px;
+}
+
+.time-block-handle.bottom-handle {
+    bottom: -3px;
+}
+
+.time-block-handle:hover {
+    background-color: var(--interactive-accent);
+    opacity: 0.5;
+    border-radius: 3px;
+}
+
+.time-block.dragging {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.time-block.resizing {
+    opacity: 0.7;
+}
+
+body.timeline-resizing {
+    cursor: row-resize;
+    user-select: none;
+}
+
+body.timeline-resizing .timeline-container,
+body.timeline-resizing .unscheduled-tasks {
+    pointer-events: none;
 }
