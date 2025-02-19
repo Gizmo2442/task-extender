@@ -9,6 +9,7 @@ interface TaskIdentity {
     identifier: string;  // Either plugin ID or content hash
     originalContent: string;
     metadata: TaskMetadata;
+    filePath: string;  // Add file path tracking
 }
 
 export class TimelineView extends View {
@@ -28,6 +29,8 @@ export class TimelineView extends View {
     private hourHeight: number = 80; // Default height doubled from 40
     private minHourHeight: number = 40;
     private maxHourHeight: number = 200;
+    private debugEnabled: boolean = true;
+    private modifiedFiles: Set<string> = new Set();
 
     constructor(leaf: WorkspaceLeaf, plugin: TaskPlannerPlugin) {
         super(leaf);
@@ -85,10 +88,32 @@ export class TimelineView extends View {
         
         // Register file change handler
         this.registerEvent(
-            this.app.vault.on('modify', (file) => {
-                if (this.currentDayFile && file.path === this.currentDayFile.path) {
+            this.app.vault.on('modify', async (file) => {
+                const startTime = performance.now();
+                this.debugLog(`File modified: ${file.path}`);
+                
+                // Only refresh if the modified file contains tasks we're tracking
+                const hasRelevantTasks = Array.from(this.taskCache.values())
+                    .some(task => task.filePath === file.path);
+                    
+                if (hasRelevantTasks || file === this.currentDayFile) {
+                    this.debugLog(`Triggering refresh for file: ${file.path}`, {
+                        hasRelevantTasks,
+                        isCurrentDayFile: file === this.currentDayFile
+                    });
+                    
+                    // Clear the file cache and mark file as modified
+                    this.fileCache.delete(file.path);
+                    this.modifiedFiles.add(file.path);
+                    
+                    // Schedule a debounced refresh
                     this.debouncedRefresh();
+                } else {
+                    this.debugLog('Skipping refresh - no relevant tasks');
                 }
+                
+                const endTime = performance.now();
+                this.debugLog(`File change handler complete: ${Math.round(endTime - startTime)}ms`);
             })
         );
 
@@ -193,42 +218,96 @@ export class TimelineView extends View {
         });
     }
 
-    private async loadTasks() {
-        const today = moment().format('YYYY-MM-DD');
-        const files = this.app.vault.getMarkdownFiles();
+    private async processFile(file: TFile, today: string): Promise<void> {
+        const content = await this.app.vault.read(file);
+        this.fileCache.set(file.path, content);
         
-        // Batch file reads and cache results
-        const fileReads = files.map(async file => {
-            if (!this.fileCache.has(file.path)) {
-                const content = await this.app.vault.read(file);
-                this.fileCache.set(file.path, content);
-            }
-            return {
-                file,
-                content: this.fileCache.get(file.path)!
-            };
-        });
+        // Keep track of tasks that existed in this file
+        const previousTasksInFile = new Set(
+            Array.from(this.taskCache.values())
+                .filter(task => task.filePath === file.path)
+                .map(task => task.identifier)
+        );
         
-        const fileContents = await Promise.all(fileReads);
-        
-        // Process all files in a single pass
-        for (const {file, content} of fileContents) {
-            const lines = content.split('\n');
-            for (const line of lines) {
-                if (line.match(/^- \[[ x]\]/)) {
-                    const taskIdentity = this.getTaskIdentity(line);
+        // Process new/updated tasks in the file
+        const lines = content.split('\n');
+        for (const line of lines) {
+            if (line.match(/^- \[[ x]\]/)) {
+                const taskIdentity = this.getTaskIdentity(line);
+                taskIdentity.filePath = file.path;
+                
+                const existingTask = this.taskCache.get(taskIdentity.identifier);
+                if (!existingTask ||
+                    existingTask.originalContent !== taskIdentity.originalContent) {
+                    this.debugLog(`Task changed/new in ${file.path}:`, {
+                        identifier: taskIdentity.identifier,
+                        old: existingTask?.originalContent,
+                        new: taskIdentity.originalContent
+                    });
                     
-                    if (!this.taskCache.has(taskIdentity.identifier)) {
-                        this.taskCache.set(taskIdentity.identifier, taskIdentity);
-                    }
+                    this.taskCache.set(taskIdentity.identifier, taskIdentity);
                     
                     if (taskIdentity.metadata.dueDate && 
                         moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
-                        this.createTaskElement(line, taskIdentity);
+                        await this.createTaskElement(line, taskIdentity);
                     }
+                }
+                previousTasksInFile.delete(taskIdentity.identifier);
+            }
+        }
+        
+        // Remove tasks that no longer exist in this file
+        for (const taskId of previousTasksInFile) {
+            const task = this.taskCache.get(taskId);
+            if (task && task.filePath === file.path) {
+                this.debugLog(`Removing task: ${taskId} from file: ${file.path}`);
+                this.taskCache.delete(taskId);
+                const taskEl = this.taskElements.get(taskId);
+                if (taskEl) {
+                    taskEl.remove();
+                    this.taskElements.delete(taskId);
                 }
             }
         }
+    }
+
+    private async loadTasks() {
+        const startTime = performance.now();
+        this.debugLog('Starting loadTasks()');
+        
+        const today = moment().format('YYYY-MM-DD');
+        
+        // If this is the initial load, process all files
+        if (this.taskCache.size === 0) {
+            const files = this.app.vault.getMarkdownFiles();
+            this.debugLog(`Initial load - processing ${files.length} files`);
+            
+            for (const file of files) {
+                await this.processFile(file, today);
+            }
+        } else {
+            // For subsequent loads, only process modified files
+            const modifiedFiles = Array.from(this.modifiedFiles)
+                .map(path => this.app.vault.getAbstractFileByPath(path))
+                .filter((file): file is TFile => file instanceof TFile);
+                
+            this.debugLog(`Incremental update - processing ${modifiedFiles.length} modified files:`, 
+                Array.from(this.modifiedFiles));
+            
+            for (const file of modifiedFiles) {
+                await this.processFile(file, today);
+            }
+            
+            // Clear the modified files set after processing
+            this.modifiedFiles.clear();
+        }
+        
+        const endTime = performance.now();
+        this.debugLog('Task loading complete', {
+            timeMs: Math.round(endTime - startTime),
+            totalTasks: this.taskCache.size,
+            taskElements: this.taskElements.size
+        });
     }
 
     private async loadScheduledTasks() {
@@ -340,60 +419,75 @@ export class TimelineView extends View {
     }
 
     private async refreshView() {
+        const startTime = performance.now();
+        this.debugLog('Starting refreshView()');
+        
         // Store current scroll position
         const scrollPosition = this.timelineEl.scrollTop;
 
-        // Create separate fragments for blocks and unscheduled tasks
-        const blocksFragment = document.createDocumentFragment();
-        
-        // Remove existing elements but keep references
-        const existingBlocks = Array.from(this.timelineEl.querySelectorAll('.time-block'));
-        const existingTasks = Array.from(this.timelineEl.querySelectorAll('.timeline-task'));
-        
-        existingBlocks.forEach(el => el.remove());
-        existingTasks.forEach(el => el.remove());
-        
-        // Load data in parallel
-        await Promise.all([
-            this.loadScheduledTasks(),
-            this.loadTimeBlocks(),
-            this.loadTasks()
-        ]);
-        
-        // Render time blocks into blocks fragment
-        this.timeBlocks.forEach(block => {
-            this.renderTimeBlock(block, blocksFragment);
-        });
+        try {
+            // Load data in parallel but don't block the UI
+            this.debugLog('Loading data...');
+            const loadPromise = Promise.all([
+                this.loadScheduledTasks(),
+                this.loadTimeBlocks(),
+                this.loadTasks()
+            ]);
 
-        // Find the unscheduled drop zone
-        const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
-        if (unscheduledDropZone) {
-            unscheduledDropZone.empty();
+            // Create separate fragments for blocks and unscheduled tasks
+            const blocksFragment = document.createDocumentFragment();
             
-            // Add unscheduled tasks to the unscheduled drop zone
-            this.taskElements.forEach((taskEl, identifier) => {
-                // Check if task is not in any time block
-                let isScheduled = false;
-                this.timeBlocks.forEach(block => {
-                    if (block.tasks.includes(identifier)) {
-                        isScheduled = true;
+            // Wait for data loading to complete
+            await loadPromise;
+            this.debugLog('Data loading complete');
+            
+            // Update time blocks
+            this.debugLog(`Rendering ${this.timeBlocks.size} time blocks`);
+            this.timeBlocks.forEach(block => {
+                this.renderTimeBlock(block, blocksFragment);
+            });
+
+            // Find the unscheduled drop zone
+            const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
+            if (unscheduledDropZone) {
+                unscheduledDropZone.empty();
+                
+                let unscheduledCount = 0;
+                // Add unscheduled tasks to the unscheduled drop zone
+                this.taskElements.forEach((taskEl, identifier) => {
+                    let isScheduled = false;
+                    this.timeBlocks.forEach(block => {
+                        if (block.tasks.includes(identifier)) {
+                            isScheduled = true;
+                        }
+                    });
+
+                    if (!isScheduled) {
+                        unscheduledCount++;
+                        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
+                        this.setupTaskDragListeners(clonedTask, identifier);
+                        unscheduledDropZone.appendChild(clonedTask);
                     }
                 });
-
-                if (!isScheduled) {
-                    const clonedTask = taskEl.cloneNode(true) as HTMLElement;
-                    // Re-attach drag event listeners
-                    this.setupTaskDragListeners(clonedTask, identifier);
-                    unscheduledDropZone.appendChild(clonedTask);
-                }
+                this.debugLog(`Rendered ${unscheduledCount} unscheduled tasks`);
+            }
+            
+            // Batch update DOM for time blocks
+            this.timelineEl.appendChild(blocksFragment);
+            
+            // Restore scroll position
+            this.timelineEl.scrollTop = scrollPosition;
+            
+            const endTime = performance.now();
+            this.debugLog('RefreshView complete', {
+                timeMs: Math.round(endTime - startTime),
+                taskElements: this.taskElements.size,
+                timeBlocks: this.timeBlocks.size
             });
+        } catch (error) {
+            console.error('Error refreshing timeline view:', error);
+            this.debugLog('Error in refreshView:', error);
         }
-        
-        // Batch update DOM for time blocks
-        this.timelineEl.appendChild(blocksFragment);
-        
-        // Restore scroll position
-        this.timelineEl.scrollTop = scrollPosition;
     }
 
     private async createTaskElement(taskText: string, taskIdentity: TaskIdentity): Promise<HTMLElement | null> {
@@ -752,7 +846,8 @@ export class TimelineView extends View {
             return {
                 identifier: idMatch[1],
                 originalContent: taskText,
-                metadata
+                metadata,
+                filePath: ''
             };
         }
 
@@ -765,7 +860,8 @@ export class TimelineView extends View {
         return {
             identifier: baseContent,
             originalContent: taskText,
-            metadata
+            metadata,
+            filePath: ''
         };
     }
 
@@ -916,6 +1012,16 @@ export class TimelineView extends View {
                 document.body.removeClass('timeline-resizing');
             }
         });
+    }
+
+    private debugLog(message: string, data?: any) {
+        if (this.debugEnabled) {
+            if (data) {
+                console.log(`[Timeline Debug] ${message}`, data);
+            } else {
+                console.log(`[Timeline Debug] ${message}`);
+            }
+        }
     }
 }
 
