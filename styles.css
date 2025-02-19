@@ -6,3 +6,181 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.timeline-main-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 10px;
+    overflow: hidden;  /* Prevent double scrollbars */
+}
+
+.timeline-container {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.time-slot {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    min-height: 40px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.time-label {
+    padding: 8px;
+    color: var(--text-muted);
+    font-size: 0.8em;
+}
+
+.time-drop-zone {
+    padding: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.time-drop-zone.drag-over {
+    background-color: var(--background-modifier-hover);
+}
+
+.timeline-task {
+    background-color: var(--background-primary-alt);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px;
+    cursor: move;
+    border-left: 4px solid var(--interactive-accent);
+}
+
+.unscheduled-tasks {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+.unscheduled-drop-zone {
+    min-height: 60px;
+    border-radius: 4px;
+    margin-top: 8px;
+    background-color: var(--background-secondary);
+    transition: background-color 0.2s ease;
+}
+
+.unscheduled-drop-zone.drag-over {
+    background-color: var(--background-modifier-hover);
+}
+
+.timeline-header {
+    padding: 10px 0;
+}
+
+.task-text {
+    margin-bottom: 4px;
+}
+
+.task-estimate {
+    font-size: 0.8em;
+    color: var(--text-muted);
+}
+
+.timeline-task.dragging {
+    opacity: 0.5;
+}
+
+.timeline-task .task-text input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.timeline-task .task-text {
+    display: flex;
+    align-items: flex-start;
+}
+
+.time-block {
+    position: absolute;
+    left: 68px;
+    right: 8px;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-left: 4px solid var(--interactive-accent);
+    border-radius: 4px;
+    padding: 8px;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.time-block .timeline-task {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    cursor: default;
+    font-size: 0.9em;
+    line-height: 1;  /* Even tighter line height */
+}
+
+/* Remove any spacing from list items */
+.time-block .timeline-task li,
+.time-block .timeline-task ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Remove markdown paragraph spacing */
+.time-block .timeline-task p {
+    margin: 0;
+    padding: 0;
+    display: inline;  /* Make paragraphs inline */
+}
+
+.time-block .timeline-task .task-text {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    min-height: 20px;
+}
+
+.time-block .timeline-task .task-estimate {
+    display: none; /* Hide time estimates in the block view */
+}
+
+.time-block .timeline-task input[type="checkbox"] {
+    margin: 0 4px 0 0;
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+}
+
+.time-block-title {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.time-block-tasks {
+    flex: 1;
+    min-height: 40px;
+    background-color: var(--background-primary-alt);
+    border-radius: 4px;
+    padding: 4px;
+    overflow-y: auto;
+    margin-top: 8px;
+}
+
+.time-block-preview {
+    background-color: var(--background-modifier-border);
+    opacity: 0.3;
+    pointer-events: none;
+}
