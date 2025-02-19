@@ -326,11 +326,35 @@ export class TimelineView extends View {
                 try {
                     const scheduledTasks = JSON.parse(match[1]);
                     for (const [key, task] of Object.entries(scheduledTasks)) {
-                        const taskIdentity = this.getTaskIdentity((task as ScheduledTask).taskText);
-                        this.scheduledTasks.set(key, {
-                            ...(task as ScheduledTask),
-                            metadata: taskIdentity.metadata
-                        });
+                        // Try to find the task by ID first, then by content
+                        const files = this.app.vault.getMarkdownFiles();
+                        let found = false;
+                        
+                        for (const file of files) {
+                            const fileContent = await this.app.vault.read(file);
+                            const lines = fileContent.split('\n');
+                            const taskLine = lines.find(line => 
+                                line.includes(`🆔 ${key}`) || 
+                                this.getTaskIdentity(line).identifier === (task as ScheduledTask).taskText
+                            );
+                            
+                            if (taskLine) {
+                                const taskIdentity = this.getTaskIdentity(taskLine);
+                                taskIdentity.filePath = file.path;
+                                this.taskCache.set(taskIdentity.identifier, taskIdentity);
+                                this.scheduledTasks.set(taskIdentity.identifier, {
+                                    ...(task as ScheduledTask),
+                                    taskText: taskIdentity.identifier,
+                                    metadata: taskIdentity.metadata
+                                });
+                                found = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!found) {
+                            console.warn('Could not find task:', key);
+                        }
                     }
                 } catch (e) {
                     console.error('Failed to parse scheduled tasks:', e);
@@ -388,27 +412,51 @@ export class TimelineView extends View {
         if (match) {
             try {
                 const timeBlocksData = JSON.parse(match[1]);
-                this.timeBlocks = new Map(Object.entries(timeBlocksData));
                 
-                // First create all task elements
-                const today = moment().format('YYYY-MM-DD');
-                const files = this.app.vault.getMarkdownFiles();
-                
-                for (const file of files) {
-                    const content = await this.app.vault.read(file);
-                    const lines = content.split('\n');
+                // Process each block and its tasks
+                for (const [blockId, blockData] of Object.entries(timeBlocksData)) {
+                    const block = blockData as TimeBlock;
+                    const processedTasks: string[] = [];
                     
-                    for (const line of lines) {
-                        if (line.match(/^- \[[ x]\]/)) {
-                            const metadata = TaskParser.parseTask(line, this.plugin.settings);
-                            if (metadata.dueDate && moment(metadata.dueDate).format('YYYY-MM-DD') === today) {
-                                this.createTaskElement(line, this.getTaskIdentity(line));
+                    // Process each task in the block
+                    for (const taskInfo of block.tasks) {
+                        const { id, text } = taskInfo as { id: string | null, text: string | null };
+                        
+                        // Try to find the task in files
+                        const files = this.app.vault.getMarkdownFiles();
+                        let found = false;
+                        
+                        for (const file of files) {
+                            const fileContent = await this.app.vault.read(file);
+                            const lines = fileContent.split('\n');
+                            const taskLine = lines.find(line => 
+                                (id && line.includes(`🆔 ${id}`)) || 
+                                (text && this.getTaskIdentity(line).identifier === text)
+                            );
+                            
+                            if (taskLine) {
+                                const taskIdentity = this.getTaskIdentity(taskLine);
+                                taskIdentity.filePath = file.path;
+                                this.taskCache.set(taskIdentity.identifier, taskIdentity);
+                                processedTasks.push(taskIdentity.identifier);
+                                found = true;
+                                break;
                             }
                         }
+                        
+                        if (!found) {
+                            console.warn('Could not find task:', id || text);
+                        }
                     }
+                    
+                    // Create the block with found tasks
+                    this.timeBlocks.set(blockId, {
+                        ...block,
+                        tasks: processedTasks
+                    });
                 }
-
-                // Then render all blocks with their tasks
+                
+                // Render all blocks
                 this.timeBlocks.forEach(block => {
                     this.renderTimeBlock(block, this.timelineEl);
                 });
@@ -514,9 +562,13 @@ export class TimelineView extends View {
         }
         
         // Use Obsidian's markdown renderer for the checkbox
-        const taskMarkdown = taskText.replace(/^- \[([ x])\]/, () => {
-            return `<input type="checkbox" ${currentTaskStatus ? 'checked' : ''}>`;
-        });
+        const taskMarkdown = taskText
+            .replace(/^- \[([ x])\]/, () => {
+                return `<input type="checkbox" ${currentTaskStatus ? 'checked' : ''}>`;
+            })
+            // Strip all metadata emojis and their content
+            .replace(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️) .*?(?=(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️)|$)/g, '')
+            .trim();
         
         // Use Obsidian's markdown processor
         MarkdownRenderer.renderMarkdown(
@@ -622,6 +674,13 @@ export class TimelineView extends View {
         await this.saveTimeBlocks();
     }
 
+    private getTaskIdentifier(task: string | { id: string | null; text: string | null; timeSlot: number }): string {
+        if (typeof task === 'string') {
+            return task;
+        }
+        return task.id || task.text || '';
+    }
+
     private renderTimeBlock(block: TimeBlock, parent: DocumentFragment | HTMLElement) {
         // Remove existing block if it exists
         const existingBlock = this.timelineEl.querySelector(`[data-block-id="${block.id}"]`);
@@ -656,8 +715,8 @@ export class TimelineView extends View {
 
         this.setupBlockDropZone(blockEl, block.id);
 
-        block.tasks.forEach(taskKey => {
-            this.renderTaskInBlock(taskKey, blockEl);
+        block.tasks.forEach(task => {
+            this.renderTaskInBlock(this.getTaskIdentifier(task), blockEl);
         });
 
         parent.appendChild(blockEl);
@@ -667,7 +726,27 @@ export class TimelineView extends View {
         // First get the latest task content from cache
         const taskIdentity = this.taskCache.get(taskKey);
         if (!taskIdentity) {
-            console.warn('Task not found in cache:', taskKey);
+            // Try to find task by ID in files if not in cache
+            const files = this.app.vault.getMarkdownFiles();
+            for (const file of files) {
+                const content = await this.app.vault.read(file);
+                const lines = content.split('\n');
+                const taskLine = lines.find(line => 
+                    line.includes(`🆔 ${taskKey}`) || 
+                    this.getTaskIdentity(line).identifier === taskKey
+                );
+                if (taskLine) {
+                    const newIdentity = this.getTaskIdentity(taskLine);
+                    newIdentity.filePath = file.path;
+                    this.taskCache.set(taskKey, newIdentity);
+                    const taskEl = await this.createTaskElement(taskLine, newIdentity);
+                    if (taskEl) {
+                        container.appendChild(taskEl);
+                    }
+                    return;
+                }
+            }
+            console.warn('Task not found in cache or files:', taskKey);
             return;
         }
 
@@ -716,22 +795,46 @@ export class TimelineView extends View {
         }
 
         const content = await this.app.vault.read(this.currentDayFile);
-        const timeBlocksData = JSON.stringify(
-            Object.fromEntries(this.timeBlocks),
-            null,
-            2
+        
+        // Convert timeBlocks to a format that includes both ID and text for each task
+        const timeBlocksData = Object.fromEntries(
+            Array.from(this.timeBlocks.entries()).map(([blockId, block]) => {
+                const tasksWithInfo = block.tasks.map(task => {
+                    if (typeof task === 'object') {
+                        return task;
+                    }
+                    const taskIdentity = this.taskCache.get(task);
+                    if (taskIdentity) {
+                        // If task has an ID in metadata, use that, otherwise use the content
+                        const idMatch = taskIdentity.originalContent.match(/🆔 ([a-zA-Z0-9_]+)/);
+                        return {
+                            id: idMatch ? idMatch[1] : null,
+                            text: this.getTaskIdentity(taskIdentity.originalContent).identifier,
+                            timeSlot: block.startHour
+                        };
+                    }
+                    return { id: task, text: null, timeSlot: block.startHour };
+                });
+
+                return [blockId, {
+                    ...block,
+                    tasks: tasksWithInfo
+                }];
+            })
         );
+
+        const timeBlocksJson = JSON.stringify(timeBlocksData, null, 2);
 
         if (content.includes('```timeBlocks')) {
             const newContent = content.replace(
                 /```timeBlocks\n[\s\S]*?\n```/,
-                '```timeBlocks\n' + timeBlocksData + '\n```'
+                '```timeBlocks\n' + timeBlocksJson + '\n```'
             );
             await this.app.vault.modify(this.currentDayFile, newContent);
         } else {
             await this.app.vault.modify(
                 this.currentDayFile,
-                content + '\n\n```timeBlocks\n' + timeBlocksData + '\n```'
+                content + '\n\n```timeBlocks\n' + timeBlocksJson + '\n```'
             );
         }
     }
@@ -753,18 +856,43 @@ export class TimelineView extends View {
             
             if (taskIdentifier && this.timeBlocks.has(blockId)) {
                 const timeBlock = this.timeBlocks.get(blockId)!;
-                if (!timeBlock.tasks.includes(taskIdentifier)) {
+                if (!timeBlock.tasks.some(task => this.getTaskIdentifier(task) === taskIdentifier)) {
                     // Remove task from any other blocks
                     this.timeBlocks.forEach(block => {
-                        block.tasks = block.tasks.filter(t => t !== taskIdentifier);
+                        block.tasks = block.tasks.filter(task => 
+                            this.getTaskIdentifier(task) !== taskIdentifier
+                        );
                     });
                     
-                    // Add task to this block
-                    timeBlock.tasks.push(taskIdentifier);
+                    // Add task to this block and ensure it has an ID
+                    const taskIdentity = this.taskCache.get(taskIdentifier);
+                    if (taskIdentity) {
+                        const taskWithId = await this.addIdToTask(taskIdentity.originalContent);
+                        if (taskWithId !== taskIdentity.originalContent) {
+                            // Update the task in its file
+                            await this.updateTaskInFile(
+                                taskIdentity.originalContent,
+                                taskWithId,
+                                taskIdentity.filePath
+                            );
+                            
+                            // Update cache with new content
+                            const newIdentity = this.getTaskIdentity(taskWithId);
+                            newIdentity.filePath = taskIdentity.filePath;
+                            this.taskCache.set(newIdentity.identifier, newIdentity);
+                            
+                            // Use new identifier in block
+                            timeBlock.tasks.push(newIdentity.identifier);
+                        } else {
+                            timeBlock.tasks.push(taskIdentifier);
+                        }
+                    }
                     
                     // Clear and re-render tasks
                     element.empty();
-                    timeBlock.tasks.forEach(id => this.renderTaskInBlock(id, element));
+                    timeBlock.tasks.forEach(task => {
+                        this.renderTaskInBlock(this.getTaskIdentifier(task), element);
+                    });
                     
                     await this.saveTimeBlocks();
                 }
@@ -840,11 +968,11 @@ export class TimelineView extends View {
     private getTaskIdentity(taskText: string): TaskIdentity {
         const metadata = TaskParser.parseTask(taskText, this.plugin.settings);
         
-        // Try to get plugin ID using unicode escape sequence
-        const idMatch = taskText.match(/\u0000\u0000 ([a-zA-Z0-9]+)/);
-        if (idMatch) {
+        // First try to get ID from metadata
+        const idMetadataMatch = taskText.match(/🆔 ([a-zA-Z0-9]+)/);
+        if (idMetadataMatch) {
             return {
-                identifier: idMatch[1],
+                identifier: idMetadataMatch[1],
                 originalContent: taskText,
                 metadata,
                 filePath: ''
@@ -863,6 +991,29 @@ export class TimelineView extends View {
             metadata,
             filePath: ''
         };
+    }
+
+    private generateTaskId(): string {
+        return 'task_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    private async addIdToTask(taskText: string): Promise<string> {
+        if (taskText.includes('🆔')) {
+            return taskText; // Already has an ID
+        }
+
+        const id = this.generateTaskId();
+        // Add ID at the end of the task text
+        return taskText.trim() + ` 🆔 ${id}`;
+    }
+
+    private async updateTaskInFile(originalTask: string, newTask: string, filePath: string) {
+        const file = this.app.vault.getAbstractFileByPath(filePath);
+        if (file instanceof TFile) {
+            const content = await this.app.vault.read(file);
+            const newContent = content.replace(originalTask, newTask);
+            await this.app.vault.modify(file, newContent);
+        }
     }
 
     private setupBlockDragHandlers(blockEl: HTMLElement, blockId: string) {

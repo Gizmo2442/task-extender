@@ -3,5 +3,5 @@ export interface TimeBlock {
     title: string;
     startHour: number;
     endHour: number;
-    tasks: string[];  // Array of task keys
+    tasks: Array<string | { id: string | null; text: string | null; timeSlot: number }>;
 } 
