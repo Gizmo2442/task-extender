@@ -26,6 +26,31 @@ export class TimeBlockManager {
         private hourHeight: number
     ) {}
 
+    private calculateBlockPercentage(block: TimeBlock): { percentage: number, totalMinutes: number } {
+        let totalTaskMinutes = 0;
+        const blockDurationMinutes = (block.endHour - block.startHour) * 60;
+
+        block.tasks.forEach(task => {
+            const taskId = this.getTaskIdentifier(task);
+            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
+            if (taskIdentity?.metadata.timeEstimate) {
+                totalTaskMinutes += taskIdentity.metadata.timeEstimate.totalMinutes;
+            }
+        });
+
+        return {
+            percentage: (totalTaskMinutes / blockDurationMinutes) * 100,
+            totalMinutes: totalTaskMinutes
+        };
+    }
+
+    private getPercentageColor(percentage: number): string {
+        if (percentage <= 50) return 'var(--color-green)';
+        if (percentage <= 75) return 'var(--color-yellow)';
+        if (percentage <= 90) return 'var(--color-orange)';
+        return 'var(--color-red)';
+    }
+
     async loadTimeBlocks(currentDayFile: TFile | null) {
         if (!currentDayFile) return;
         
@@ -153,10 +178,24 @@ export class TimeBlockManager {
         blockEl.style.top = `${top}px`;
         blockEl.style.height = `${height}px`;
         
-        const titleEl = blockEl.createEl('div', { 
+        // Calculate and display percentage
+        const { percentage, totalMinutes } = this.calculateBlockPercentage(block);
+        const titleContainer = blockEl.createEl('div', { cls: 'time-block-header' });
+        
+        const titleEl = titleContainer.createEl('div', { 
             cls: 'time-block-title',
             text: block.title
         });
+
+        const percentageEl = titleContainer.createEl('div', {
+            cls: 'time-block-percentage',
+            text: `${Math.round(percentage)}%`
+        });
+        
+        percentageEl.style.color = this.getPercentageColor(percentage);
+        if (percentage > 100) {
+            percentageEl.style.fontWeight = 'bold';
+        }
 
         // Add resize handles
         const topHandle = blockEl.createEl('div', { cls: 'time-block-handle top-handle' });
@@ -414,4 +453,4 @@ export class TimeBlockManager {
     private getTaskIdentifier(task: string | TaskInfo): string {
         return typeof task === 'string' ? task : (task.id || task.text || '');
     }
-} 
+}

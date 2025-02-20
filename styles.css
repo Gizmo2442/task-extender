@@ -73,6 +73,9 @@ If your plugin does not need CSS, delete this file.
     margin: 4px;
     cursor: move;
     border-left: 4px solid var(--interactive-accent);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .unscheduled-tasks {
@@ -104,11 +107,35 @@ If your plugin does not need CSS, delete this file.
 
 .task-text {
     margin-bottom: 4px;
+    flex: 1;
+}
+
+.task-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 8px;
+}
+
+.task-stopwatch {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.task-stopwatch:hover {
+    opacity: 1;
+    background-color: var(--background-modifier-hover);
 }
 
 .task-estimate {
     font-size: 0.8em;
     color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--background-secondary);
 }
 
 .timeline-task.dragging {
@@ -138,6 +165,30 @@ If your plugin does not need CSS, delete this file.
     display: flex;
     flex-direction: column;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.time-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.time-block-title {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+.time-block-percentage {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--background-secondary);
+    transition: color 0.2s ease;
 }
 
 .time-block .timeline-task {
@@ -173,24 +224,11 @@ If your plugin does not need CSS, delete this file.
     min-height: 20px;
 }
 
-.time-block .timeline-task .task-estimate {
-    display: none; /* Hide time estimates in the block view */
-}
-
 .time-block .timeline-task input[type="checkbox"] {
     margin: 0 4px 0 0;
     cursor: pointer;
     width: 14px;
     height: 14px;
-}
-
-.time-block-title {
-    font-weight: 600;
-    font-size: 0.9em;
-    color: var(--text-muted);
-    margin-bottom: 8px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--background-modifier-border);
 }
 
 .time-block-tasks {
@@ -267,4 +305,19 @@ body.timeline-resizing {
 body.timeline-resizing .timeline-container,
 body.timeline-resizing .unscheduled-tasks {
     pointer-events: none;
+}
+
+/* Time Estimate Modal */
+.modal .setting-item {
+    border: none;
+}
+
+.modal .setting-item-control button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.modal .setting-item-control button.invalid {
+    background-color: var(--background-modifier-error);
+    color: var(--text-on-accent);
 }

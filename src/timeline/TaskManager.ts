@@ -2,6 +2,7 @@ import { MarkdownRenderer, TFile, App } from 'obsidian';
 import { TaskParser, type TaskMetadata } from '../taskParser';
 import type { ITimelineView } from './TimelineInterfaces';
 import { moment } from 'obsidian';
+import { TimeEstimateModal } from './TimeEstimateModal';
 
 export interface TaskIdentity {
     identifier: string;  // Either plugin ID or content hash
@@ -69,13 +70,60 @@ export class TaskManager {
         
         taskEl.appendChild(textEl);
 
+        // Create controls container
+        const controlsEl = document.createElement('div');
+        controlsEl.addClass('task-controls');
+
+        // Add stopwatch icon for time estimate
+        const stopwatchEl = document.createElement('span');
+        stopwatchEl.addClass('task-stopwatch');
+        stopwatchEl.innerHTML = '⏱️';
+        stopwatchEl.addEventListener('click', async () => {
+            const modal = new TimeEstimateModal(this.app);
+            const result = await modal.openAndGetValue();
+            
+            if (result) {
+                let newContent = taskIdentity.originalContent;
+                
+                // Remove existing time estimate if present
+                newContent = newContent.replace(/⏱️\s*(?:\d+d)?\s*(?:\d+h)?\s*(?:\d+m)?\s*/, '');
+                
+                // Add new time estimate before any other metadata
+                const metadataMatch = newContent.match(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️)/);
+                if (metadataMatch) {
+                    const index = metadataMatch.index!;
+                    newContent = newContent.slice(0, index) + result + ' ' + newContent.slice(index);
+                } else {
+                    newContent = newContent.trim() + ' ' + result;
+                }
+                
+                // Update task in file and cache
+                await this.updateTaskInFile(taskIdentity.originalContent, newContent, taskIdentity.filePath);
+                const newIdentity = this.getTaskIdentity(newContent);
+                newIdentity.filePath = taskIdentity.filePath;
+                this.taskCache.set(newIdentity.identifier, newIdentity);
+                
+                // Re-render task element
+                const parentEl = taskEl.parentElement;
+                if (parentEl) {
+                    const newTaskEl = await this.createTaskElement(newContent, newIdentity);
+                    if (newTaskEl) {
+                        parentEl.replaceChild(newTaskEl, taskEl);
+                    }
+                }
+            }
+        });
+        controlsEl.appendChild(stopwatchEl);
+
         // Add time estimate if available
         if (taskIdentity.metadata.timeEstimate) {
             const estimateEl = document.createElement('div');
             estimateEl.addClass('task-estimate');
-            estimateEl.setText(`Estimated: ${this.formatTimeEstimate(taskIdentity.metadata.timeEstimate)}`);
-            taskEl.appendChild(estimateEl);
+            estimateEl.setText(`${this.formatTimeEstimate(taskIdentity.metadata.timeEstimate)}`);
+            controlsEl.appendChild(estimateEl);
         }
+
+        taskEl.appendChild(controlsEl);
 
         // Add drag listeners
         this.setupTaskDragListeners(taskEl, taskIdentity.identifier);
@@ -222,4 +270,4 @@ export class TaskManager {
             }
         }
     }
-} 
+}
