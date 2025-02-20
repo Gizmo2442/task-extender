@@ -805,14 +805,13 @@ export class TimelineView extends View {
                     }
                     const taskIdentity = this.taskCache.get(task);
                     if (taskIdentity) {
-                        // If task has an ID in metadata, use that, otherwise use the content
-                        const idMatch = taskIdentity.originalContent.match(/🆔 ([a-zA-Z0-9_]+)/);
                         return {
-                            id: idMatch ? idMatch[1] : null,
-                            text: this.getTaskIdentity(taskIdentity.originalContent).identifier,
+                            id: taskIdentity.identifier,
+                            text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim(),
                             timeSlot: block.startHour
                         };
                     }
+                    this.debugLog('Warning: Task not found in cache during save:', task);
                     return { id: task, text: null, timeSlot: block.startHour };
                 });
 
@@ -852,47 +851,77 @@ export class TimelineView extends View {
         element.addEventListener('drop', async (e) => {
             e.preventDefault();
             element.removeClass('drag-over');
-            const taskIdentifier = e.dataTransfer?.getData('text/plain');
+            const rawIdentifier = e.dataTransfer?.getData('text/plain');
+            if (!rawIdentifier) return;
             
-            if (taskIdentifier && this.timeBlocks.has(blockId)) {
+            const taskIdentifier = rawIdentifier;
+            
+            if (this.timeBlocks.has(blockId)) {
                 const timeBlock = this.timeBlocks.get(blockId)!;
-                if (!timeBlock.tasks.some(task => this.getTaskIdentifier(task) === taskIdentifier)) {
+
+                if (!timeBlock.tasks.some(task => 
+                    typeof task === 'string' 
+                        ? task === taskIdentifier 
+                        : task.id === taskIdentifier
+                )) {
                     // Remove task from any other blocks
                     this.timeBlocks.forEach(block => {
                         block.tasks = block.tasks.filter(task => 
-                            this.getTaskIdentifier(task) !== taskIdentifier
+                            typeof task === 'string'
+                                ? task !== taskIdentifier
+                                : task.id !== taskIdentifier
                         );
                     });
                     
                     // Add task to this block and ensure it has an ID
-                    const taskIdentity = this.taskCache.get(taskIdentifier);
-                    if (taskIdentity) {
-                        const taskWithId = await this.addIdToTask(taskIdentity.originalContent);
-                        if (taskWithId !== taskIdentity.originalContent) {
+                    let currentTaskIdentity = this.taskCache.get(taskIdentifier);
+                    if (currentTaskIdentity) {
+                        // Ensure task has an ID
+                        let taskContent = currentTaskIdentity.originalContent;
+                        let taskId: string;
+                        
+                        if (!taskContent.includes('🆔')) {
+                            taskContent = await this.addIdToTask(taskContent);
                             // Update the task in its file
                             await this.updateTaskInFile(
-                                taskIdentity.originalContent,
-                                taskWithId,
-                                taskIdentity.filePath
+                                currentTaskIdentity.originalContent,
+                                taskContent,
+                                currentTaskIdentity.filePath
                             );
                             
                             // Update cache with new content
-                            const newIdentity = this.getTaskIdentity(taskWithId);
-                            newIdentity.filePath = taskIdentity.filePath;
+                            const newIdentity = this.getTaskIdentity(taskContent);
+                            newIdentity.filePath = currentTaskIdentity.filePath;
                             this.taskCache.set(newIdentity.identifier, newIdentity);
-                            
-                            // Use new identifier in block
-                            timeBlock.tasks.push(newIdentity.identifier);
-                        } else {
-                            timeBlock.tasks.push(taskIdentifier);
+                            currentTaskIdentity = newIdentity;
                         }
+                        
+                        // Extract the task ID
+                        const idMatch = taskContent.match(/🆔 (task_[a-zA-Z0-9_]+)/);
+                        taskId = idMatch ? idMatch[1] : currentTaskIdentity.identifier;
+
+                        // Create task info object
+                        const taskInfo = {
+                            id: taskId,
+                            text: taskContent.replace(/^- \[[ x]\] /, '').trim(),
+                            timeSlot: timeBlock.startHour
+                        };
+
+                        timeBlock.tasks.push(taskInfo);
+                    } else {
+                        this.debugLog('Task not found in cache:', taskIdentifier);
                     }
                     
                     // Clear and re-render tasks
                     element.empty();
-                    timeBlock.tasks.forEach(task => {
-                        this.renderTaskInBlock(this.getTaskIdentifier(task), element);
-                    });
+                    for (const task of timeBlock.tasks) {
+                        const taskId = typeof task === 'string' ? task : task.id;
+                        if (taskId) {
+                            await this.renderTaskInBlock(taskId, element);
+                        } else {
+                            this.debugLog('Warning: Invalid task object:', task);
+                        }
+                    }
                     
                     await this.saveTimeBlocks();
                 }
@@ -969,7 +998,7 @@ export class TimelineView extends View {
         const metadata = TaskParser.parseTask(taskText, this.plugin.settings);
         
         // First try to get ID from metadata
-        const idMetadataMatch = taskText.match(/🆔 ([a-zA-Z0-9]+)/);
+        const idMetadataMatch = taskText.match(/🆔 (task_[a-zA-Z0-9_]+)/);
         if (idMetadataMatch) {
             return {
                 identifier: idMetadataMatch[1],
