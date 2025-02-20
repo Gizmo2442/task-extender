@@ -59,11 +59,12 @@ export class TimelineView extends View {
         
         // Create controls
         const controlsEl = headerEl.createEl('div', { cls: 'timeline-controls' });
-        const zoomInBtn = controlsEl.createEl('button', { text: '🔍+' });
-        const zoomOutBtn = controlsEl.createEl('button', { text: '🔍-' });
-
-        zoomInBtn.addEventListener('click', () => this.zoom(1.2));
-        zoomOutBtn.addEventListener('click', () => this.zoom(0.8));
+        const refreshBtn = controlsEl.createEl('button', { text: '🔄' });
+        refreshBtn.setAttribute('title', 'Refresh Timeline');
+        refreshBtn.addEventListener('click', async () => {
+            this.clearCaches();
+            await this.refreshView();
+        });
 
         // Create timeline container
         this.timelineEl = mainContainer.createEl('div', { cls: 'timeline-container' });
