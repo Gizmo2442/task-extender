@@ -71,11 +71,11 @@ If your plugin does not need CSS, delete this file.
     border-radius: 4px;
     padding: 8px;
     margin: 4px;
-    cursor: move;
     border-left: 4px solid var(--interactive-accent);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
 }
 
 .unscheduled-tasks {
@@ -342,4 +342,22 @@ body.timeline-resizing .unscheduled-tasks {
 .unscheduled-tasks .timeline-task p {
     margin: 0;
     padding: 0;
+}
+
+.task-drag-handle {
+    cursor: grab;
+    color: var(--text-muted);
+    opacity: 0.5;
+    padding: 0 4px;
+    font-size: 14px;
+    transition: opacity 0.2s ease;
+    user-select: none;
+}
+
+.task-drag-handle:hover {
+    opacity: 1;
+}
+
+.task-drag-handle:active {
+    cursor: grabbing;
 }

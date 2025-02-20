@@ -28,6 +28,12 @@ export class TaskManager {
         taskEl.addClass('timeline-task');
         taskEl.setAttribute('data-task', taskIdentity.identifier);
 
+        // Create drag handle
+        const dragHandle = document.createElement('div');
+        dragHandle.addClass('task-drag-handle');
+        dragHandle.innerHTML = '⋮⋮'; // Vertical dots as drag indicator
+        taskEl.appendChild(dragHandle);
+
         // Create task text container with checkbox
         const textEl = document.createElement('div');
         textEl.addClass('task-text');
@@ -129,8 +135,8 @@ export class TaskManager {
 
         taskEl.appendChild(controlsEl);
 
-        // Add drag listeners
-        this.setupTaskDragListeners(taskEl, taskIdentity.identifier);
+        // Add drag listeners to the handle only
+        this.setupTaskDragListeners(dragHandle, taskIdentity.identifier, taskEl);
 
         // Store reference using identifier
         this.taskElements.set(taskIdentity.identifier, taskEl);
@@ -178,14 +184,14 @@ export class TaskManager {
         });
     }
 
-    setupTaskDragListeners(taskEl: HTMLElement, identifier: string) {
-        taskEl.setAttribute('draggable', 'true');
-        taskEl.addEventListener('dragstart', (e) => {
+    setupTaskDragListeners(dragHandle: HTMLElement, identifier: string, taskEl: HTMLElement) {
+        dragHandle.setAttribute('draggable', 'true');
+        dragHandle.addEventListener('dragstart', (e) => {
             e.dataTransfer?.setData('text/plain', identifier);
             taskEl.addClass('dragging');
         });
 
-        taskEl.addEventListener('dragend', () => {
+        dragHandle.addEventListener('dragend', () => {
             taskEl.removeClass('dragging');
         });
     }

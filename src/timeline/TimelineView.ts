@@ -369,7 +369,10 @@ export class TimelineView extends View implements ITimelineView {
 
                     if (!isScheduled) {
                         const clonedTask = taskEl.cloneNode(true) as HTMLElement;
-                        this.taskManager.setupTaskDragListeners(clonedTask, identifier);
+                        const dragHandle = clonedTask.querySelector('.task-drag-handle');
+                        if (dragHandle) {
+                            this.taskManager.setupTaskDragListeners(dragHandle as HTMLElement, identifier, clonedTask);
+                        }
                         unscheduledDropZone.appendChild(clonedTask);
                     }
                 });
