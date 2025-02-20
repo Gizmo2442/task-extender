@@ -113,7 +113,7 @@ If your plugin does not need CSS, delete this file.
 .task-controls {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0px;
     margin-left: 8px;
 }
 
@@ -121,7 +121,7 @@ If your plugin does not need CSS, delete this file.
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s ease;
-    padding: 2px 6px;
+    padding: 2px 2px;
     border-radius: 4px;
 }
 
@@ -133,7 +133,7 @@ If your plugin does not need CSS, delete this file.
 .task-estimate {
     font-size: 0.8em;
     color: var(--text-muted);
-    padding: 2px 6px;
+    padding: 2px 2px;
     border-radius: 4px;
     background-color: var(--background-secondary);
 }
@@ -320,4 +320,26 @@ body.timeline-resizing .unscheduled-tasks {
 .modal .setting-item-control button.invalid {
     background-color: var(--background-modifier-error);
     color: var(--text-on-accent);
+}
+
+.unscheduled-tasks .timeline-task {
+    padding: 4px;  /* Reduced from 8px */
+    margin: 2px;   /* Reduced from 4px */
+    line-height: 1.2;  /* Tighter line height */
+}
+
+.unscheduled-tasks .timeline-task .task-text {
+    margin-bottom: 0;  /* Remove bottom margin */
+    min-height: unset; /* Remove minimum height */
+}
+
+.unscheduled-tasks .timeline-task input[type="checkbox"] {
+    width: 14px;      /* Slightly smaller checkbox */
+    height: 14px;
+    margin: 0 4px 0 0;  /* Tighter margins */
+}
+
+.unscheduled-tasks .timeline-task p {
+    margin: 0;
+    padding: 0;
 }

@@ -252,48 +252,6 @@ export class TimelineView extends View implements ITimelineView {
         this.timelineEl.appendChild(previewEl);
     }
 
-    private async refreshView() {
-        // Store current scroll position
-        const scrollPosition = this.timelineEl.scrollTop;
-
-        try {
-            // Load data in parallel
-            await Promise.all([
-                this.loadScheduledTasks(),
-                this.timeBlockManager.loadTimeBlocks(this.currentDayFile),
-                this.loadTasks()
-            ]);
-
-            // Find the unscheduled drop zone
-            const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
-            if (unscheduledDropZone) {
-                unscheduledDropZone.empty();
-                
-                // Add unscheduled tasks to the unscheduled drop zone
-                this.taskManager.getTaskElements().forEach((taskEl, identifier) => {
-                    let isScheduled = false;
-                    this.timeBlockManager.getTimeBlocks().forEach(block => {
-                        if (block.tasks.includes(identifier)) {
-                            isScheduled = true;
-                        }
-                    });
-
-                    if (!isScheduled) {
-                        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
-                        this.taskManager.setupTaskDragListeners(clonedTask, identifier);
-                        unscheduledDropZone.appendChild(clonedTask);
-                    }
-                });
-            }
-            
-            // Restore scroll position
-            this.timelineEl.scrollTop = scrollPosition;
-            
-        } catch (error) {
-            console.error('Error refreshing timeline view:', error);
-        }
-    }
-
     private async loadTasks() {
         const today = moment().format('YYYY-MM-DD');
         
@@ -380,6 +338,48 @@ export class TimelineView extends View implements ITimelineView {
                 `${today}.md`,
                 '# ' + moment().format('MMMM D, YYYY') + '\n\n```timeBlocks\n{}\n```'
             );
+        }
+    }
+
+    public async refreshView() {
+        // Store current scroll position
+        const scrollPosition = this.timelineEl.scrollTop;
+
+        try {
+            // Load data in parallel
+            await Promise.all([
+                this.loadScheduledTasks(),
+                this.timeBlockManager.loadTimeBlocks(this.currentDayFile),
+                this.loadTasks()
+            ]);
+
+            // Find the unscheduled drop zone
+            const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
+            if (unscheduledDropZone) {
+                unscheduledDropZone.empty();
+                
+                // Add unscheduled tasks to the unscheduled drop zone
+                this.taskManager.getTaskElements().forEach((taskEl, identifier) => {
+                    let isScheduled = false;
+                    this.timeBlockManager.getTimeBlocks().forEach(block => {
+                        if (block.tasks.includes(identifier)) {
+                            isScheduled = true;
+                        }
+                    });
+
+                    if (!isScheduled) {
+                        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
+                        this.taskManager.setupTaskDragListeners(clonedTask, identifier);
+                        unscheduledDropZone.appendChild(clonedTask);
+                    }
+                });
+            }
+            
+            // Restore scroll position
+            this.timelineEl.scrollTop = scrollPosition;
+            
+        } catch (error) {
+            console.error('Error refreshing timeline view:', error);
         }
     }
 
