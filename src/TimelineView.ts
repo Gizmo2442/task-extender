@@ -574,44 +574,77 @@ export class TimelineView extends View {
         const checkbox = textEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
         if (checkbox) {
             checkbox.addEventListener('click', async (e) => {
+                // Stop event propagation to prevent block events
                 e.stopPropagation();
+                e.preventDefault();
+
                 const files = this.app.vault.getMarkdownFiles();
+                this.debugLog('Searching through files for task');
+                
                 for (const file of files) {
                     const content = await this.app.vault.read(file);
                     const lines = content.split('\n');
                     const lineIndex = lines.findIndex(line => line.includes(taskIdentity.identifier));
                     
+                    this.debugLog('Checking file', {
+                        file: file.path,
+                        lineFound: lineIndex !== -1
+                    });
+                    
                     if (lineIndex !== -1) {
                         const originalLine = lines[lineIndex];
+                        const isCurrentlyChecked = originalLine.includes('- [x]');
+                        
+                        this.debugLog('Found task line', {
+                            originalLine,
+                            lineIndex,
+                            currentCheckboxState: isCurrentlyChecked ? 'checked' : 'unchecked'
+                        });
+                        
                         const newContent = lines.map((line, index) => {
                             if (index === lineIndex) {
-                                if (checkbox.checked) {
-                                    // Add completion date when checking
-                                    return originalLine.replace(/^- \[ \]/, '- [x]') + 
-                                           (originalLine.includes('✅') ? '' : ` ✅ ${moment().format('YYYY-MM-DD')}`);
+                                let newLine;
+                                if (!isCurrentlyChecked) {
+                                    // Task is currently unchecked, so check it
+                                    const beforeReplace = line;
+                                    newLine = line.replace(/^-\s*\[\s*\]/, '- [x]') + 
+                                           (line.includes('✅') ? '' : ` ✅ ${moment().format('YYYY-MM-DD')}`);
+                                    this.debugLog('Checkbox replacement (checking):', {
+                                        before: beforeReplace,
+                                        after: newLine,
+                                        regexMatched: beforeReplace !== newLine
+                                    });
                                 } else {
-                                    // Remove completion date when unchecking
-                                    return originalLine.replace(/^- \[x\]/, '- [ ]').replace(/✅ \d{4}-\d{2}-\d{2}/, '').trim();
+                                    // Task is currently checked, so uncheck it
+                                    const beforeReplace = line;
+                                    newLine = line.replace(/^-\s*\[x\]/, '- [ ]').replace(/✅\s*\d{4}-\d{2}-\d{2}/, '').trim();
+                                    this.debugLog('Checkbox replacement (unchecking):', {
+                                        before: beforeReplace,
+                                        after: newLine,
+                                        regexMatched: beforeReplace !== newLine
+                                    });
                                 }
+
+                                // Update checkbox state to match file
+                                checkbox.checked = !isCurrentlyChecked;
+
+                                this.debugLog('Modifying line', {
+                                    from: originalLine,
+                                    to: newLine,
+                                    newCheckboxState: checkbox.checked
+                                });
+                                return newLine;
                             }
                             return line;
                         }).join('\n');
                         
+                        this.debugLog('Attempting to modify file');
                         await this.app.vault.modify(file, newContent);
-                        
-                        // Update the task's display
-                        const updatedTaskIdentity = this.getTaskIdentity(lines[lineIndex]);
-                        this.taskCache.set(updatedTaskIdentity.identifier, updatedTaskIdentity);
-                        
-                        // Re-render the task element
-                        const newTaskEl = await this.createTaskElement(lines[lineIndex], updatedTaskIdentity);
-                        if (newTaskEl) {
-                            taskEl.replaceWith(newTaskEl);
-                        }
-                        
+                        this.debugLog('File modified successfully');
                         break;
                     }
                 }
+                this.debugLog('Checkbox click handler completed');
             });
         }
         
@@ -1044,10 +1077,12 @@ export class TimelineView extends View {
         let originalBlock: TimeBlock;
 
         blockEl.addEventListener('mousedown', (e: MouseEvent) => {
-            // Only start drag if clicking the title area
+            // Only start drag if clicking an empty area (not on tasks, handles, or title)
             const target = e.target as HTMLElement;
-            if (!target.classList.contains('time-block-handle') && 
-                !target.classList.contains('timeline-task')) {
+            if (target === blockEl || // Direct click on block
+                (target.parentElement === blockEl && !target.classList.contains('time-block-handle') && 
+                !target.classList.contains('time-block-title') && 
+                !target.classList.contains('timeline-task'))) {
                 isDragging = true;
                 startY = e.clientY;
                 startTop = blockEl.offsetTop;
