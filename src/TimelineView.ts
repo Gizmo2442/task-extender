@@ -93,24 +93,15 @@ export class TimelineView extends View {
                 const startTime = performance.now();
                 this.debugLog(`File modified: ${file.path}`);
                 
-                // Only refresh if the modified file contains tasks we're tracking
-                const hasRelevantTasks = Array.from(this.taskCache.values())
-                    .some(task => task.filePath === file.path);
-                    
-                if (hasRelevantTasks || file === this.currentDayFile) {
-                    this.debugLog(`Triggering refresh for file: ${file.path}`, {
-                        hasRelevantTasks,
-                        isCurrentDayFile: file === this.currentDayFile
-                    });
-                    
-                    // Clear the file cache and mark file as modified
+                if (file instanceof TFile && file.extension === 'md') {
+                    // Always clear the file cache and mark file as modified for markdown files
                     this.fileCache.delete(file.path);
                     this.modifiedFiles.add(file.path);
                     
-                    // Schedule a debounced refresh
+                    // Schedule a debounced refresh to pick up any new tasks
                     this.debouncedRefresh();
-                } else {
-                    this.debugLog('Skipping refresh - no relevant tasks');
+                    
+                    this.debugLog('Scheduled refresh for modified markdown file:', file.path);
                 }
                 
                 const endTime = performance.now();
