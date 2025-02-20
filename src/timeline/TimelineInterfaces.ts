@@ -7,4 +7,5 @@ export interface ITimelineView extends Component {
     getTimelineEl(): HTMLElement;
     getCurrentDayFile(): TFile | null;
     getTaskManager(): TaskManager;
-} 
+    refreshView(): Promise<void>;
+}

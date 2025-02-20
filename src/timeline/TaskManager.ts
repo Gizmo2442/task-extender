@@ -51,7 +51,7 @@ export class TaskManager {
                 return `<input type="checkbox" ${currentTaskStatus ? 'checked' : ''}>`;
             })
             // Strip all metadata emojis and their content
-            .replace(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️) .*?(?=(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️)|$)/g, '')
+            .replace(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️|⏱️) .*?(?=(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️|⏱️)|$)/g, '')
             .trim();
         
         // Use Obsidian's markdown processor
@@ -78,7 +78,8 @@ export class TaskManager {
         const stopwatchEl = document.createElement('span');
         stopwatchEl.addClass('task-stopwatch');
         stopwatchEl.innerHTML = '⏱️';
-        stopwatchEl.addEventListener('click', async () => {
+        stopwatchEl.addEventListener('click', async (e) => {
+            e.stopPropagation();
             const modal = new TimeEstimateModal(this.app);
             const result = await modal.openAndGetValue();
             
@@ -103,14 +104,17 @@ export class TaskManager {
                 newIdentity.filePath = taskIdentity.filePath;
                 this.taskCache.set(newIdentity.identifier, newIdentity);
                 
-                // Re-render task element
-                const parentEl = taskEl.parentElement;
-                if (parentEl) {
+                // Re-render all instances of this task
+                const taskElements = Array.from(document.querySelectorAll(`[data-task="${taskIdentity.identifier}"]`));
+                for (const element of taskElements) {
                     const newTaskEl = await this.createTaskElement(newContent, newIdentity);
-                    if (newTaskEl) {
-                        parentEl.replaceChild(newTaskEl, taskEl);
+                    if (newTaskEl && element.parentElement) {
+                        element.parentElement.replaceChild(newTaskEl, element);
                     }
                 }
+
+                // Trigger a refresh of any time blocks containing this task
+                await this.view.refreshView();
             }
         });
         controlsEl.appendChild(stopwatchEl);
