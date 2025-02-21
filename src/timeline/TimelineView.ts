@@ -2,6 +2,7 @@ import { View, WorkspaceLeaf, moment, TFile, App, debounce } from 'obsidian';
 import type TaskPlannerPlugin from '../main';
 import { TaskManager } from './TaskManager';
 import { TimeBlockManager } from './TimeBlockManager';
+import { TaskDragManager } from './TaskDragManager';
 import { TimeBlockModal, setupSplitter } from './TimelineComponents';
 import { zoom } from './TimelineUtils';
 import type { ITimelineView } from './TimelineInterfaces';
@@ -19,6 +20,7 @@ export class TimelineView extends View implements ITimelineView {
     private maxHourHeight: number = 200;
     private taskManager: TaskManager;
     private timeBlockManager: TimeBlockManager;
+    private taskDragManager: TaskDragManager;
     private debouncedRefresh: () => void;
 
     constructor(leaf: WorkspaceLeaf, plugin: TaskPlannerPlugin) {
@@ -26,6 +28,7 @@ export class TimelineView extends View implements ITimelineView {
         this.plugin = plugin;
         this.taskManager = new TaskManager(this.app, this);
         this.timeBlockManager = new TimeBlockManager(this.app, this, this.hourHeight);
+        this.taskDragManager = new TaskDragManager(this.app, this);
         this.debouncedRefresh = debounce(this.refreshView.bind(this), 1000, true);
     }
 
@@ -51,6 +54,14 @@ export class TimelineView extends View implements ITimelineView {
 
     getTaskManager(): TaskManager {
         return this.taskManager;
+    }
+
+    getTimeBlockManager(): TimeBlockManager {
+        return this.timeBlockManager;
+    }
+
+    getTaskDragManager(): TaskDragManager {
+        return this.taskDragManager;
     }
 
     async onOpen() {
@@ -193,20 +204,16 @@ export class TimelineView extends View implements ITimelineView {
         element.addEventListener('drop', async (e) => {
             e.preventDefault();
             element.removeClass('drag-over');
-            const taskText = e.dataTransfer?.getData('text/plain');
-            const timeSlot = element.dataset.time;
-            
-            if (taskText && timeSlot) {
-                const taskKey = this.taskManager.getTaskIdentity(taskText).identifier;
-                const oldTaskEl = this.containerEl.querySelector(`[data-task="${taskKey}"]`);
-                
-                if (oldTaskEl) {
-                    oldTaskEl.remove();
-                }
+            const taskIdentifier = e.dataTransfer?.getData('text/plain');
+            if (!taskIdentifier) return;
 
-                const taskIdentity = this.taskManager.getTaskIdentity(taskText);
-                await this.taskManager.createTaskElement(taskText, taskIdentity);
-            }
+            await this.taskDragManager.handleTaskDrop(
+                taskIdentifier,
+                element,
+                this.timeBlockManager.getTimeBlocks(),
+                undefined,
+                true
+            );
         });
     }
 
@@ -372,6 +379,14 @@ export class TimelineView extends View implements ITimelineView {
                         const dragHandle = clonedTask.querySelector('.task-drag-handle');
                         if (dragHandle) {
                             this.taskManager.setupTaskDragListeners(dragHandle as HTMLElement, identifier, clonedTask);
+                        }
+                        // Setup time estimate button listeners for the cloned task
+                        const stopwatchEl = clonedTask.querySelector('.task-stopwatch');
+                        if (stopwatchEl) {
+                            const taskIdentity = this.taskManager.getTaskCache().get(identifier);
+                            if (taskIdentity) {
+                                this.taskManager.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
+                            }
                         }
                         unscheduledDropZone.appendChild(clonedTask);
                     }

@@ -84,45 +84,7 @@ export class TaskManager {
         const stopwatchEl = document.createElement('span');
         stopwatchEl.addClass('task-stopwatch');
         stopwatchEl.innerHTML = '⏱️';
-        stopwatchEl.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const modal = new TimeEstimateModal(this.app);
-            const result = await modal.openAndGetValue();
-            
-            if (result) {
-                let newContent = taskIdentity.originalContent;
-                
-                // Remove existing time estimate if present
-                newContent = newContent.replace(/⏱️\s*(?:\d+d)?\s*(?:\d+h)?\s*(?:\d+m)?\s*/, '');
-                
-                // Add new time estimate before any other metadata
-                const metadataMatch = newContent.match(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️)/);
-                if (metadataMatch) {
-                    const index = metadataMatch.index!;
-                    newContent = newContent.slice(0, index) + result + ' ' + newContent.slice(index);
-                } else {
-                    newContent = newContent.trim() + ' ' + result;
-                }
-                
-                // Update task in file and cache
-                await this.updateTaskInFile(taskIdentity.originalContent, newContent, taskIdentity.filePath);
-                const newIdentity = this.getTaskIdentity(newContent);
-                newIdentity.filePath = taskIdentity.filePath;
-                this.taskCache.set(newIdentity.identifier, newIdentity);
-                
-                // Re-render all instances of this task
-                const taskElements = Array.from(document.querySelectorAll(`[data-task="${taskIdentity.identifier}"]`));
-                for (const element of taskElements) {
-                    const newTaskEl = await this.createTaskElement(newContent, newIdentity);
-                    if (newTaskEl && element.parentElement) {
-                        element.parentElement.replaceChild(newTaskEl, element);
-                    }
-                }
-
-                // Trigger a refresh of any time blocks containing this task
-                await this.view.refreshView();
-            }
-        });
+        this.setupTimeEstimateButtonListeners(stopwatchEl, taskIdentity);
         controlsEl.appendChild(stopwatchEl);
 
         // Add time estimate if available
@@ -193,6 +155,48 @@ export class TaskManager {
 
         dragHandle.addEventListener('dragend', () => {
             taskEl.removeClass('dragging');
+        });
+    }
+
+    setupTimeEstimateButtonListeners(stopwatchEl: HTMLElement, taskIdentity: TaskIdentity) {
+        stopwatchEl.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const modal = new TimeEstimateModal(this.app);
+            const result = await modal.openAndGetValue();
+            
+            if (result) {
+                let newContent = taskIdentity.originalContent;
+                
+                // Remove existing time estimate if present
+                newContent = newContent.replace(/⏱️\s*(?:\d+d)?\s*(?:\d+h)?\s*(?:\d+m)?\s*/, '');
+                
+                // Add new time estimate before any other metadata
+                const metadataMatch = newContent.match(/(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️)/);
+                if (metadataMatch) {
+                    const index = metadataMatch.index!;
+                    newContent = newContent.slice(0, index) + result + ' ' + newContent.slice(index);
+                } else {
+                    newContent = newContent.trim() + ' ' + result;
+                }
+                
+                // Update task in file and cache
+                await this.updateTaskInFile(taskIdentity.originalContent, newContent, taskIdentity.filePath);
+                const newIdentity = this.getTaskIdentity(newContent);
+                newIdentity.filePath = taskIdentity.filePath;
+                this.taskCache.set(newIdentity.identifier, newIdentity);
+                
+                // Re-render all instances of this task
+                const taskElements = Array.from(document.querySelectorAll(`[data-task="${taskIdentity.identifier}"]`));
+                for (const element of taskElements) {
+                    const newTaskEl = await this.createTaskElement(newContent, newIdentity);
+                    if (newTaskEl && element.parentElement) {
+                        element.parentElement.replaceChild(newTaskEl, element);
+                    }
+                }
+
+                // Trigger a refresh of any time blocks containing this task
+                await this.view.refreshView();
+            }
         });
     }
 

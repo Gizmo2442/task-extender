@@ -381,58 +381,12 @@ export class TimeBlockManager {
             const rawIdentifier = e.dataTransfer?.getData('text/plain');
             if (!rawIdentifier) return;
             
-            const taskIdentifier = rawIdentifier;
-            
-            if (this.timeBlocks.has(blockId)) {
-                const timeBlock = this.timeBlocks.get(blockId)!;
-
-                if (!timeBlock.tasks.some(task => task === taskIdentifier)) {
-                    // Remove task from any other blocks
-                    this.timeBlocks.forEach(block => {
-                        block.tasks = block.tasks.filter(task => task !== taskIdentifier);
-                    });
-                    
-                    // Add task to this block and ensure it has an ID
-                    let currentTaskIdentity = this.view.getTaskManager().getTaskCache().get(taskIdentifier);
-                    if (currentTaskIdentity) {
-                        // Ensure task has an ID
-                        let taskContent = currentTaskIdentity.originalContent;
-                        let taskId: string;
-                        
-                        if (!taskContent.includes('🆔')) {
-                            taskContent = await this.view.getTaskManager().addIdToTask(taskContent);
-                            // Update the task in its file
-                            await this.view.getTaskManager().updateTaskInFile(
-                                currentTaskIdentity.originalContent,
-                                taskContent,
-                                currentTaskIdentity.filePath
-                            );
-                            
-                            // Update cache with new content
-                            const newIdentity = this.view.getTaskManager().getTaskIdentity(taskContent);
-                            newIdentity.filePath = currentTaskIdentity.filePath;
-                            this.view.getTaskManager().getTaskCache().set(newIdentity.identifier, newIdentity);
-                            currentTaskIdentity = newIdentity;
-                        }
-                        
-                        // Extract the task ID
-                        const idMatch = taskContent.match(/🆔 (task_[a-zA-Z0-9_]+)/);
-                        taskId = idMatch ? idMatch[1] : currentTaskIdentity.identifier;
-
-                        timeBlock.tasks.push(taskId);
-                    } else {
-                        this.debugLog('Task not found in cache:', taskIdentifier);
-                    }
-                    
-                    // Clear and re-render tasks
-                    element.empty();
-                    for (const task of timeBlock.tasks) {
-                        await this.renderTaskInBlock(this.getTaskIdentifier(task), element);
-                    }
-                    
-                    await this.saveTimeBlocks(this.view.getCurrentDayFile());
-                }
-            }
+            await this.view.getTaskDragManager().handleTaskDrop(
+                rawIdentifier,
+                element,
+                this.timeBlocks,
+                blockId
+            );
         });
     }
 
