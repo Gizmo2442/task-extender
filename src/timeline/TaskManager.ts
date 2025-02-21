@@ -71,7 +71,7 @@ export class TaskManager {
         // Add click handler for checkbox
         const checkbox = textEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
         if (checkbox) {
-            this.setupCheckboxHandler(checkbox, taskIdentity);
+            this.setupCheckboxListeners(checkbox, taskIdentity);
         }
         
         taskEl.appendChild(textEl);
@@ -106,7 +106,7 @@ export class TaskManager {
         return taskEl;
     }
 
-    private setupCheckboxHandler(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) {
+    setupCheckboxListeners(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) {
         checkbox.addEventListener('click', async (e) => {
             e.stopPropagation();
             e.preventDefault();
