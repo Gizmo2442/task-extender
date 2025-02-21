@@ -22,6 +22,32 @@ export class TaskManager {
         private view: ITimelineView
     ) {}
 
+    private setupTaskListeners(taskEl: HTMLElement, taskIdentity: TaskIdentity) {
+        // Setup drag handle
+        const dragHandle = taskEl.querySelector('.task-drag-handle');
+        if (dragHandle) {
+            this.setupTaskDragListeners(dragHandle as HTMLElement, taskIdentity.identifier, taskEl);
+        }
+
+        // Setup checkbox
+        const checkbox = taskEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        if (checkbox) {
+            this.setupCheckboxListeners(checkbox, taskIdentity);
+        }
+
+        // Setup time estimate button
+        const stopwatchEl = taskEl.querySelector('.task-stopwatch');
+        if (stopwatchEl) {
+            this.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
+        }
+    }
+
+    public setupClonedTask(taskEl: HTMLElement, taskIdentity: TaskIdentity): HTMLElement {
+        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
+        this.setupTaskListeners(clonedTask, taskIdentity);
+        return clonedTask;
+    }
+
     async createTaskElement(taskText: string, taskIdentity: TaskIdentity): Promise<HTMLElement | null> {
         // Create task container
         const taskEl = document.createElement('div');
@@ -67,12 +93,6 @@ export class TaskManager {
             '',
             this.view
         );
-
-        // Add click handler for checkbox
-        const checkbox = textEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
-        if (checkbox) {
-            this.setupCheckboxListeners(checkbox, taskIdentity);
-        }
         
         taskEl.appendChild(textEl);
 
@@ -84,7 +104,6 @@ export class TaskManager {
         const stopwatchEl = document.createElement('span');
         stopwatchEl.addClass('task-stopwatch');
         stopwatchEl.innerHTML = '⏱️';
-        this.setupTimeEstimateButtonListeners(stopwatchEl, taskIdentity);
         controlsEl.appendChild(stopwatchEl);
 
         // Add time estimate if available
@@ -97,8 +116,8 @@ export class TaskManager {
 
         taskEl.appendChild(controlsEl);
 
-        // Add drag listeners to the handle only
-        this.setupTaskDragListeners(dragHandle, taskIdentity.identifier, taskEl);
+        // Setup all listeners
+        this.setupTaskListeners(taskEl, taskIdentity);
 
         // Store reference using identifier
         this.taskElements.set(taskIdentity.identifier, taskEl);

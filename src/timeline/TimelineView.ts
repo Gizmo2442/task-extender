@@ -375,22 +375,11 @@ export class TimelineView extends View implements ITimelineView {
                     });
 
                     if (!isScheduled) {
-                        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
                         const taskIdentity = this.taskManager.getTaskCache().get(identifier);
-                        const dragHandle = clonedTask.querySelector('.task-drag-handle');
-                        if (dragHandle) {
-                            this.taskManager.setupTaskDragListeners(dragHandle as HTMLElement, identifier, clonedTask);
+                        if (taskIdentity) {
+                            const clonedTask = this.taskManager.setupClonedTask(taskEl, taskIdentity);
+                            unscheduledDropZone.appendChild(clonedTask);
                         }
-                        const checkbox = clonedTask.querySelector('input[type="checkbox"]') as HTMLInputElement;
-                        if (checkbox && taskIdentity) {
-                            this.taskManager.setupCheckboxListeners(checkbox, taskIdentity);
-                        }
-                        // Setup time estimate button listeners for the cloned task
-                        const stopwatchEl = clonedTask.querySelector('.task-stopwatch');
-                        if (stopwatchEl && taskIdentity) {
-                            this.taskManager.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
-                        }
-                        unscheduledDropZone.appendChild(clonedTask);
                     }
                 });
             }
