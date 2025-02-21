@@ -26,31 +26,6 @@ export class TimeBlockManager {
         private hourHeight: number
     ) {}
 
-    private calculateBlockPercentage(block: TimeBlock): { percentage: number, totalMinutes: number } {
-        let totalTaskMinutes = 0;
-        const blockDurationMinutes = (block.endTime - block.startTime) * 60;
-
-        block.tasks.forEach(task => {
-            const taskId = this.getTaskIdentifier(task);
-            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
-            if (taskIdentity?.metadata.timeEstimate) {
-                totalTaskMinutes += taskIdentity.metadata.timeEstimate.totalMinutes;
-            }
-        });
-
-        return {
-            percentage: (totalTaskMinutes / blockDurationMinutes) * 100,
-            totalMinutes: totalTaskMinutes
-        };
-    }
-
-    private getPercentageColor(percentage: number): string {
-        if (percentage <= 50) return 'var(--color-green)';
-        if (percentage <= 75) return 'var(--color-yellow)';
-        if (percentage <= 90) return 'var(--color-orange)';
-        return 'var(--color-red)';
-    }
-
     async loadTimeBlocks(currentDayFile: TFile | null) {
         if (!currentDayFile) return;
         
@@ -214,6 +189,39 @@ export class TimeBlockManager {
         });
 
         parent.appendChild(blockEl);
+    }
+
+    public updateHourHeight(newHeight: number) {
+        this.hourHeight = newHeight;
+        // Re-render all blocks with new height
+        this.timeBlocks.forEach(block => {
+            this.renderTimeBlock(block, this.view.getTimelineEl());
+        });
+    }
+
+    private calculateBlockPercentage(block: TimeBlock): { percentage: number, totalMinutes: number } {
+        let totalTaskMinutes = 0;
+        const blockDurationMinutes = (block.endTime - block.startTime) * 60;
+
+        block.tasks.forEach(task => {
+            const taskId = this.getTaskIdentifier(task);
+            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
+            if (taskIdentity?.metadata.timeEstimate) {
+                totalTaskMinutes += taskIdentity.metadata.timeEstimate.totalMinutes;
+            }
+        });
+
+        return {
+            percentage: (totalTaskMinutes / blockDurationMinutes) * 100,
+            totalMinutes: totalTaskMinutes
+        };
+    }
+
+    private getPercentageColor(percentage: number): string {
+        if (percentage <= 50) return 'var(--color-green)';
+        if (percentage <= 75) return 'var(--color-yellow)';
+        if (percentage <= 90) return 'var(--color-orange)';
+        return 'var(--color-red)';
     }
 
     private async renderTaskInBlock(taskKey: string, container: HTMLElement) {

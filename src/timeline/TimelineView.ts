@@ -203,6 +203,7 @@ export class TimelineView extends View implements ITimelineView {
                     this.minHourHeight,
                     this.maxHourHeight
                 );
+                this.timeBlockManager.updateHourHeight(this.hourHeight);
             }
         });
     }
