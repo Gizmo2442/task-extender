@@ -415,3 +415,25 @@ body.timeline-resizing .unscheduled-tasks {
 .task-drag-handle:active {
     cursor: grabbing;
 }
+
+/* TimeBlocks Code Block Styles */
+.timeblocks-container {
+    background-color: var(--background-secondary);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 8px 0;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.timeblocks-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.timeblocks-label {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: var(--text-muted);
+}

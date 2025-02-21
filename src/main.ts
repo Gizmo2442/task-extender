@@ -36,6 +36,23 @@ export default class TaskPlannerPlugin extends Plugin {
 
         // Add settings tab
         this.addSettingTab(new TaskPlannerSettingTab(this.app, this));
+
+        // Register timeBlocks code block processor
+        this.registerMarkdownCodeBlockProcessor('timeBlocks', (source, el, ctx) => {
+            // Create container
+            const container = el.createEl('div', { cls: 'timeblocks-container' });
+            
+            // Create title section
+            const titleSection = container.createEl('div', { cls: 'timeblocks-title' });
+            titleSection.createEl('span', { text: 'TimeBlocks', cls: 'timeblocks-label' });
+            
+            // Store the source in a hidden element
+            const sourceEl = container.createEl('div', { 
+                cls: 'timeblocks-source',
+                attr: { style: 'display: none;' }
+            });
+            sourceEl.setText(source);
+        });
     }
 
     onunload() {
