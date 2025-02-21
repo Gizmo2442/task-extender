@@ -5,14 +5,14 @@ import type { TaskIdentity } from './TaskManager';
 interface TaskInfo {
     id: string | null;
     text: string | null;
-    timeSlot?: number;
+    timeSlot: number;
 }
 
 export interface TimeBlock {
     id: string;
     title: string;
-    startHour: number;
-    endHour: number;
+    startTime: number;  // Decimal hour (e.g., 9.25 for 9:15)
+    endTime: number;    // Decimal hour (e.g., 10.5 for 10:30)
     tasks: (string | TaskInfo)[];
 }
 
@@ -28,7 +28,7 @@ export class TimeBlockManager {
 
     private calculateBlockPercentage(block: TimeBlock): { percentage: number, totalMinutes: number } {
         let totalTaskMinutes = 0;
-        const blockDurationMinutes = (block.endHour - block.startHour) * 60;
+        const blockDurationMinutes = (block.endTime - block.startTime) * 60;
 
         block.tasks.forEach(task => {
             const taskId = this.getTaskIdentifier(task);
@@ -131,11 +131,11 @@ export class TimeBlockManager {
                         return {
                             id: taskIdentity.identifier,
                             text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim(),
-                            timeSlot: block.startHour
+                            timeSlot: block.startTime
                         };
                     }
                     this.debugLog('Warning: Task not found in cache during save:', taskId);
-                    return { id: taskId, text: null, timeSlot: block.startHour };
+                    return { id: taskId, text: null, timeSlot: block.startTime };
                 });
 
                 return [blockId, {
@@ -172,8 +172,8 @@ export class TimeBlockManager {
         blockEl.addClass('time-block');
         blockEl.setAttribute('data-block-id', block.id);
         
-        const top = block.startHour * this.hourHeight;
-        const height = (block.endHour - block.startHour) * this.hourHeight;
+        const top = block.startTime * this.hourHeight;
+        const height = (block.endTime - block.startTime) * this.hourHeight;
         
         blockEl.style.top = `${top}px`;
         blockEl.style.height = `${height}px`;
@@ -278,18 +278,18 @@ export class TimeBlockManager {
             const deltaY = e.clientY - startY;
             const newTop = startTop + deltaY;
             
-            // Convert pixel position to hours
-            const newStartHour = Math.round(newTop / this.hourHeight);
-            const duration = originalBlock.endHour - originalBlock.startHour;
+            // Convert pixel position to decimal hours
+            const newStartTime = Math.round((newTop / this.hourHeight) * 4) / 4;
+            const duration = originalBlock.endTime - originalBlock.startTime;
             
             // Ensure block stays within timeline bounds
-            if (newStartHour >= 0 && newStartHour + duration <= 24) {
-                blockEl.style.top = `${newStartHour * this.hourHeight}px`;
+            if (newStartTime >= 0 && newStartTime + duration <= 24) {
+                blockEl.style.top = `${newStartTime * this.hourHeight}px`;
                 
                 // Update block times
                 const block = this.timeBlocks.get(blockId)!;
-                block.startHour = newStartHour;
-                block.endHour = newStartHour + duration;
+                block.startTime = newStartTime;
+                block.endTime = newStartTime + duration;
             }
         });
 
@@ -338,20 +338,20 @@ export class TimeBlockManager {
 
             if (resizeType === 'top') {
                 const newTop = startTop + deltaY;
-                const newStartHour = Math.round(newTop / this.hourHeight);
+                const newStartTime = Math.round((newTop / this.hourHeight) * 4) / 4;
                 
-                if (newStartHour >= 0 && newStartHour < block.endHour) {
-                    blockEl.style.top = `${newStartHour * this.hourHeight}px`;
-                    blockEl.style.height = `${(block.endHour - newStartHour) * this.hourHeight}px`;
-                    block.startHour = newStartHour;
+                if (newStartTime >= 0 && newStartTime < block.endTime) {
+                    blockEl.style.top = `${newStartTime * this.hourHeight}px`;
+                    blockEl.style.height = `${(block.endTime - newStartTime) * this.hourHeight}px`;
+                    block.startTime = newStartTime;
                 }
             } else {
                 const newHeight = startHeight + deltaY;
-                const newEndHour = Math.round((startTop + newHeight) / this.hourHeight);
+                const newEndTime = Math.round(((startTop + newHeight) / this.hourHeight) * 4) / 4;
                 
-                if (newEndHour <= 24 && newEndHour > block.startHour) {
-                    blockEl.style.height = `${(newEndHour - block.startHour) * this.hourHeight}px`;
-                    block.endHour = newEndHour;
+                if (newEndTime <= 24 && newEndTime > block.startTime) {
+                    blockEl.style.height = `${(newEndTime - block.startTime) * this.hourHeight}px`;
+                    block.endTime = newEndTime;
                 }
             }
         });

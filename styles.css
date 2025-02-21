@@ -44,26 +44,80 @@ If your plugin does not need CSS, delete this file.
 }
 
 .time-slot {
-    display: grid;
-    grid-template-columns: 60px 1fr;
+    display: flex;  /* Changed from block to flex */
+    flex-direction: column;
     min-height: 40px;
-    border-bottom: 1px solid var(--background-modifier-border);
+    border-bottom: 0px solid var(--background-modifier-border);
     transition: height 0.2s ease;
+    position: relative;
+    padding-left: 60px;  /* Space for the label */
 }
 
 .time-label {
+    position: absolute;
+    left: 0px;
+    top: -15px;
+    width: 60px;
+    height: 100%;
     padding: 8px;
     color: var(--text-muted);
     font-size: 0.8em;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;  /* Added to right align the text */
+    border-top: none;
+    border-bottom: none;
+    border-right: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+}
+
+.time-drop-zone-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    position: relative;
+    margin-left: 0px;  /* Align with the padding-left of time-slot */
+    width: 100%;
 }
 
 .time-drop-zone {
-    padding: 4px;
-    transition: background-color 0.2s ease;
+    flex: 1;  /* Each drop zone takes equal space */
+    position: relative;  /* Changed from absolute */
+    background: transparent;
+    left: unset;  /* Remove absolute positioning */
+    right: unset;
 }
 
 .time-drop-zone.drag-over {
     background-color: var(--background-modifier-hover);
+}
+
+.hour-marker {
+    position: absolute;
+    left: 0px;
+    right: 0;
+    height: 1px;
+    border-top: 1px solid var(--background-modifier-border);
+    opacity: 1;
+    pointer-events: none;
+}
+
+.half-hour-marker {
+    position: absolute;
+    left: 0px;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 1px;
+    border-top: 1px dashed var(--background-modifier-border);
+    opacity: 1;
+    pointer-events: none;
+}
+
+.time-drop-zone:hover {
+    background-color: var(--text-accent);
+    opacity: 0.1;
 }
 
 .timeline-task {

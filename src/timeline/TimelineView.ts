@@ -133,36 +133,52 @@ export class TimelineView extends View implements ITimelineView {
                 text: `${hour.toString().padStart(2, '0')}:00`
             });
             
-            const dropZone = timeSlot.createEl('div', { 
-                cls: 'time-drop-zone',
-                attr: { 'data-hour': hour.toString() }
-            });
-
-            // Add time block creation handlers
-            dropZone.addEventListener('mousedown', (e) => {
-                this.isCreatingTimeBlock = true;
-                this.timeBlockStart = hour;
-            });
-
-            dropZone.addEventListener('mouseover', (e) => {
-                if (this.isCreatingTimeBlock && this.timeBlockStart !== null) {
-                    this.showTimeBlockPreview(this.timeBlockStart, hour);
-                }
+            const hourMarker = timeSlot.createEl('div', {
+                cls: 'hour-marker',
+                attr: { 'data-time': `${hour}` }
             });
             
-            this.timeSlots.set(hour, dropZone);
+            const halfHourMarker = timeSlot.createEl('div', {
+                cls: 'half-hour-marker',
+                attr: { 'data-time': `${hour + 0.5}` }
+            });
+
+            // Create a container for drop zones
+            const dropZoneContainer = timeSlot.createEl('div', { cls: 'time-drop-zone-container' });
+
+            // Create drop zones for all quarters including the hour mark
+            for (let quarter = 0; quarter < 4; quarter++) {
+                const dropZone = dropZoneContainer.createEl('div', { 
+                    cls: 'time-drop-zone',
+                    attr: { 'data-time': `${hour + quarter * 0.25}` }
+                });
+
+                // Add time block creation handlers
+                dropZone.addEventListener('mousedown', (e) => {
+                    this.isCreatingTimeBlock = true;
+                    this.timeBlockStart = hour + quarter * 0.25;
+                });
+
+                dropZone.addEventListener('mouseover', (e) => {
+                    if (this.isCreatingTimeBlock && this.timeBlockStart !== null) {
+                        this.showTimeBlockPreview(this.timeBlockStart, hour + quarter * 0.25);
+                    }
+                });
+                
+                this.timeSlots.set(hour + quarter * 0.25, dropZone);
+            }
         }
 
         // Add mouseup handler to document
         document.addEventListener('mouseup', async (e) => {
             if (this.isCreatingTimeBlock && this.timeBlockStart !== null) {
-                // Get the current hour from the element under the mouse
+                // Get the current time from the element under the mouse
                 const element = document.elementFromPoint(e.clientX, e.clientY);
-                const currentHour = element?.closest('.time-drop-zone')?.getAttribute('data-hour');
+                const currentTime = element?.closest('.time-drop-zone')?.getAttribute('data-time');
                 
                 await this.createNewTimeBlock(
                     this.timeBlockStart,
-                    currentHour ? parseInt(currentHour) : this.timeBlockStart
+                    currentTime ? parseFloat(currentTime) : this.timeBlockStart
                 );
                 
                 this.isCreatingTimeBlock = false;
@@ -217,7 +233,7 @@ export class TimelineView extends View implements ITimelineView {
         });
     }
 
-    private async createNewTimeBlock(startHour: number, endHour: number) {
+    private async createNewTimeBlock(startTime: number, endTime: number) {
         const modal = new TimeBlockModal(this.app);
         const title = await modal.openAndGetValue();
         if (!title) return;
@@ -226,8 +242,8 @@ export class TimelineView extends View implements ITimelineView {
         const timeBlock = {
             id,
             title,
-            startHour: Math.min(startHour, endHour),
-            endHour: Math.max(startHour, endHour) + 1,  // +1 because end hour is exclusive
+            startTime: Math.min(startTime, endTime),
+            endTime: Math.max(startTime, endTime) + 0.25,  // +0.25 because end time is exclusive
             tasks: []
         };
 
@@ -236,7 +252,7 @@ export class TimelineView extends View implements ITimelineView {
         await this.timeBlockManager.saveTimeBlocks(this.currentDayFile);
     }
 
-    private showTimeBlockPreview(startHour: number, currentHour: number) {
+    private showTimeBlockPreview(startTime: number, currentTime: number) {
         // Remove any existing preview
         const existingPreview = this.timelineEl.querySelector('.time-block-preview');
         if (existingPreview) {
@@ -248,8 +264,8 @@ export class TimelineView extends View implements ITimelineView {
         previewEl.addClass('time-block-preview', 'time-block');
         
         // Calculate position
-        const start = Math.min(startHour, currentHour);
-        const end = Math.max(startHour, currentHour) + 1;
+        const start = Math.min(startTime, currentTime);
+        const end = Math.max(startTime, currentTime) + 0.25;
         const top = start * this.hourHeight;
         const height = (end - start) * this.hourHeight;
         
