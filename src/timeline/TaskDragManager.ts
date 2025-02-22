@@ -3,18 +3,10 @@ import type { ITimelineView } from './TimelineInterfaces';
 import type { TimeBlock } from './TimeBlockManager';
 
 export class TaskDragManager {
-    constructor(
-        private app: App,
-        private view: ITimelineView,
-    ) {}
+    constructor(private app: App, private view: ITimelineView) {}
 
-    async handleTaskDrop(
-        taskIdentifier: string,
-        targetElement: HTMLElement,
-        timeBlocks: Map<string, TimeBlock>,
-        targetBlockId?: string,
-        isUnscheduled: boolean = false
-    ) {
+    async handleTaskDrop(taskIdentifier: string, targetElement: HTMLElement, timeBlocks: Map<string, TimeBlock>, targetBlockId?: string, isUnscheduled: boolean = false)
+    {
         // Get current task identity from cache
         let currentTaskIdentity = this.view.getTaskManager().getTaskCache().get(taskIdentifier);
         if (!currentTaskIdentity) return;

@@ -12,15 +12,74 @@ export interface TaskIdentity {
 }
 
 export class TaskManager {
-    private taskElements: Map<string, HTMLElement> = new Map();
-    private taskCache: Map<string, TaskIdentity> = new Map();
-    private fileCache: Map<string, string> = new Map();
-    private debugEnabled: boolean = true;
+    private readonly taskElements: Map<string, HTMLElement> = new Map();
+    private readonly taskCache: Map<string, TaskIdentity> = new Map();
+    private readonly fileCache: Map<string, string> = new Map();
 
     constructor(
         private app: App,
         private view: ITimelineView
     ) {}
+
+    public createTask(taskText: string, filePath: string): TaskIdentity 
+    {
+        const taskIdentity = this.getTaskIdentity(taskText);
+        taskIdentity.filePath = filePath;
+        this.taskCache.set(taskIdentity.identifier, taskIdentity);
+        return taskIdentity;
+    }
+
+    public setupClonedTask(taskEl: HTMLElement, taskIdentity: TaskIdentity): HTMLElement 
+    {
+        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
+        this.setupTaskListeners(clonedTask, taskIdentity);
+        return clonedTask;
+    }
+    
+    public async processFile(file: TFile): Promise<void> {
+        const content = await this.app.vault.read(file);
+        this.fileCache.set(file.path, content);
+        
+        const previousTasksInFile = new Set(
+            Array.from(this.taskCache.values())
+                .filter(task => task.filePath === file.path)
+                .map(task => task.identifier)
+        );
+        
+        const lines = content.split('\n');
+        for (const line of lines) {
+            if (line.match(/^- \[[ x]\]/)) {
+                const taskIdentity = this.getTaskIdentity(line);
+                taskIdentity.filePath = file.path;
+                
+                const existingTask = this.taskCache.get(taskIdentity.identifier);
+                if (!existingTask || existingTask.originalContent !== taskIdentity.originalContent) {
+                    this.taskCache.set(taskIdentity.identifier, taskIdentity);
+                }
+                previousTasksInFile.delete(taskIdentity.identifier);
+            }
+        }
+        
+        // Remove tasks that no longer exist in this file
+        for (const taskId of previousTasksInFile) 
+        {
+            const task = this.taskCache.get(taskId);
+            if (task && task.filePath === file.path)
+            {
+                this.removeTask(taskId);
+            }
+        }
+    }
+    
+    private removeTask(taskId: string) 
+    {
+        this.taskCache.delete(taskId);
+        const taskEl = this.taskElements.get(taskId);
+        if (taskEl) {
+            taskEl.remove();
+            this.taskElements.delete(taskId);
+        }
+    }
 
     private setupTaskListeners(taskEl: HTMLElement, taskIdentity: TaskIdentity) {
         // Setup drag handle
@@ -40,12 +99,6 @@ export class TaskManager {
         if (stopwatchEl) {
             this.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
         }
-    }
-
-    public setupClonedTask(taskEl: HTMLElement, taskIdentity: TaskIdentity): HTMLElement {
-        const clonedTask = taskEl.cloneNode(true) as HTMLElement;
-        this.setupTaskListeners(clonedTask, taskIdentity);
-        return clonedTask;
     }
 
     async createTaskElement(taskText: string, taskIdentity: TaskIdentity): Promise<HTMLElement | null> {
@@ -131,7 +184,6 @@ export class TaskManager {
             e.preventDefault();
 
             const files = this.app.vault.getMarkdownFiles();
-            this.debugLog('Searching through files for task');
             
             for (const file of files) {
                 const content = await this.app.vault.read(file);
@@ -219,6 +271,7 @@ export class TaskManager {
         });
     }
 
+    // TODO: This should not be needed as a public method, and private version should be renamed to something like "generateTaskIdentity"
     getTaskIdentity(taskText: string): TaskIdentity {
         const metadata = TaskParser.parseTask(taskText, this.view.getPlugin().settings);
         
@@ -292,15 +345,5 @@ export class TaskManager {
 
     getTaskElements() {
         return this.taskElements;
-    }
-
-    private debugLog(message: string, data?: any) {
-        if (this.debugEnabled) {
-            if (data) {
-                console.log(`[Timeline Debug] ${message}`, data);
-            } else {
-                console.log(`[Timeline Debug] ${message}`);
-            }
-        }
     }
 }

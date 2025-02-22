@@ -26,32 +26,36 @@ export class TimeBlockManager {
         private hourHeight: number
     ) {}
 
-    async loadTimeBlocks(currentDayFile: TFile | null) {
+    async loadTimeBlocks(currentDayFile: TFile | null) 
+    {
         if (!currentDayFile) return;
         
         const content = await this.app.vault.read(currentDayFile);
         const match = content.match(/```timeBlocks\n([\s\S]*?)\n```/);
         
-        if (match) {
-            try {
+        if (match) 
+        {
+            try 
+            {
                 const timeBlocksData = JSON.parse(match[1]);
                 
                 // Process each block and its tasks
-                for (const [blockId, blockData] of Object.entries(timeBlocksData)) {
+                for (const [blockId, blockData] of Object.entries(timeBlocksData)) 
+                {
                     const block = blockData as TimeBlock;
                     const processedTasks: string[] = [];
                     
                     // Process each task in the block
-                    for (const taskInfo of block.tasks) {
-                        const { id, text } = (typeof taskInfo === 'string' 
-                            ? { id: null, text: taskInfo } 
-                            : taskInfo) as TaskInfo;
+                    for (const taskInfo of block.tasks) 
+                    {
+                        const { id, text } = (typeof taskInfo === 'string' ? { id: null, text: taskInfo } : taskInfo) as TaskInfo;
                         
                         // Try to find the task in files
                         const files = this.app.vault.getMarkdownFiles();
                         let found = false;
                         
-                        for (const file of files) {
+                        for (const file of files) 
+                        {
                             const fileContent = await this.app.vault.read(file);
                             const lines = fileContent.split('\n');
                             const taskLine = lines.find(line => 
@@ -59,19 +63,17 @@ export class TimeBlockManager {
                                 (text && this.view.getTaskManager().getTaskIdentity(line).identifier === text)
                             );
                             
-                            if (taskLine) {
-                                const taskIdentity = this.view.getTaskManager().getTaskIdentity(taskLine);
-                                taskIdentity.filePath = file.path;
-                                this.view.getTaskManager().getTaskCache().set(taskIdentity.identifier, taskIdentity);
+                            if (taskLine) 
+                            {
+                                const taskIdentity = this.view.getTaskManager().createTask(taskLine, file.path);
                                 processedTasks.push(taskIdentity.identifier);
                                 found = true;
                                 break;
                             }
                         }
                         
-                        if (!found) {
+                        if (!found)
                             console.warn('Could not find task:', id || text);
-                        }
                     }
                     
                     // Create the block with found tasks

@@ -416,7 +416,6 @@ body.timeline-resizing .unscheduled-tasks {
     cursor: grabbing;
 }
 
-/* TimeBlocks Code Block Styles */
 .timeblocks-container {
     background-color: var(--background-secondary);
     border-radius: 8px;
