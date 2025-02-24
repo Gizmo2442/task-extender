@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App } from 'obsidian';
 import type { ITimelineView } from './TimelineInterfaces';
 import type { TimeBlock } from './TimeBlockManager';
 
@@ -7,33 +7,22 @@ export class TaskDragManager {
 
     async handleTaskDrop(taskIdentifier: string, targetElement: HTMLElement, timeBlocks: Map<string, TimeBlock>, targetBlockId?: string, isUnscheduled: boolean = false)
     {
-        // Get current task identity from cache
-        let currentTaskIdentity = this.view.getTaskManager().getTaskCache().get(taskIdentifier);
+        const taskManager = this.view.getTaskManager();
+        
+        // Get current task identity from cache and ensure it has an ID if needed
+        const currentTaskIdentity = targetBlockId ? 
+                                    await taskManager.ensureTaskHasId(taskIdentifier) :
+                                    taskManager.getTaskCache().get(taskIdentifier);
+            
         if (!currentTaskIdentity) return;
 
-        // Ensure task has an ID if it's being dropped into a time block
-        if (targetBlockId && !currentTaskIdentity.originalContent.includes('🆔')) {
-            const taskContent = await this.view.getTaskManager().addIdToTask(currentTaskIdentity.originalContent);
-            
-            // Update the task in its file
-            await this.view.getTaskManager().updateTaskInFile(
-                currentTaskIdentity.originalContent,
-                taskContent,
-                currentTaskIdentity.filePath
-            );
-            
-            // Update cache with new content
-            const newIdentity = this.view.getTaskManager().getTaskIdentity(taskContent);
-            newIdentity.filePath = currentTaskIdentity.filePath;
-            this.view.getTaskManager().getTaskCache().set(newIdentity.identifier, newIdentity);
-            currentTaskIdentity = newIdentity;
-        }
-
-        if (targetBlockId && timeBlocks.has(targetBlockId)) {
+        if (targetBlockId && timeBlocks.has(targetBlockId)) 
+        {
             const timeBlock = timeBlocks.get(targetBlockId)!;
 
             // Only add if not already in this block
-            if (!timeBlock.tasks.some(task => this.getTaskIdentifier(task) === taskIdentifier)) {
+            if (!timeBlock.tasks.some(task => this.getTaskIdentifier(task) === taskIdentifier)) 
+            {
                 // Remove task from any other blocks
                 timeBlocks.forEach(block => {
                     block.tasks = block.tasks.filter(task => 
@@ -50,7 +39,9 @@ export class TaskDragManager {
                     await this.renderTaskInBlock(this.getTaskIdentifier(task), targetElement);
                 }
             }
-        } else if (isUnscheduled) {
+        } 
+        else if (isUnscheduled) 
+        {
             // Remove task from all time blocks
             timeBlocks.forEach(block => {
                 block.tasks = block.tasks.filter(task => 
@@ -59,7 +50,7 @@ export class TaskDragManager {
             });
 
             // Create new task element in unscheduled area
-            const taskEl = await this.view.getTaskManager().createTaskElement(
+            const taskEl = await taskManager.createTaskElement(
                 currentTaskIdentity.originalContent,
                 currentTaskIdentity
             );
@@ -74,23 +65,27 @@ export class TaskDragManager {
         }
     }
 
-    private async renderTaskInBlock(taskIdentifier: string, container: HTMLElement) {
-        const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskIdentifier);
-        if (!taskIdentity) {
+    private async renderTaskInBlock(taskIdentifier: string, container: HTMLElement) 
+    {
+        const taskManager = this.view.getTaskManager(); 
+        const taskIdentity = taskManager.getTaskCache().get(taskIdentifier);
+        if (!taskIdentity) 
+        {
             // Try to find task by ID in files if not in cache
             const files = this.app.vault.getMarkdownFiles();
-            for (const file of files) {
+            for (const file of files) 
+            {
                 const content = await this.app.vault.read(file);
                 const lines = content.split('\n');
                 const taskLine = lines.find(line => 
                     line.includes(`🆔 ${taskIdentifier}`) || 
-                    this.view.getTaskManager().getTaskIdentity(line).identifier === taskIdentifier
-                );
-                if (taskLine) {
-                    const newIdentity = this.view.getTaskManager().getTaskIdentity(taskLine);
-                    newIdentity.filePath = file.path;
-                    this.view.getTaskManager().getTaskCache().set(taskIdentifier, newIdentity);
-                    const taskEl = await this.view.getTaskManager().createTaskElement(taskLine, newIdentity);
+                    taskManager.getTaskIdentity(line).identifier === taskIdentifier);
+                    
+                if (taskLine) 
+                {
+                    taskManager.setTaskFilePath(taskIdentifier, file.path);
+                    const newIdentity = taskManager.getTaskIdentity(taskLine);
+                    const taskEl = await taskManager.createTaskElement(taskLine, newIdentity);
                     if (taskEl) {
                         container.appendChild(taskEl);
                     }
@@ -101,7 +96,7 @@ export class TaskDragManager {
             return;
         }
 
-        const taskEl = await this.view.getTaskManager().createTaskElement(
+        const taskEl = await taskManager.createTaskElement(
             taskIdentity.originalContent,
             taskIdentity
         );

@@ -93,33 +93,39 @@ export class TimeBlockManager {
         }
     }
 
-    async saveTimeBlocks(currentDayFile: TFile | null) {
+    async saveTimeBlocks(currentDayFile: TFile | null) 
+    {
         if (!currentDayFile) return;
+        
+        // Helper functions for saving time blocks
+        const saveTimeBlocks_processTask = (task: string | TaskInfo, blockStartTime: number): TaskInfo => {
+            const taskId = this.getTaskIdentifier(task);
+            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
+
+            if (taskIdentity) {
+                return {
+                    id: taskIdentity.identifier,
+                    text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim(),
+                    timeSlot: blockStartTime
+                };
+            } else {
+                this.debugLog('Warning: Task not found in cache during save:', taskId);
+                return { id: taskId, text: null, timeSlot: blockStartTime };
+            }
+        };
+
+        const saveTimeBlocks_processTimeBlock = (blockId: string, block: TimeBlock): [string, TimeBlock] => {
+            const tasksWithInfo = block.tasks.map(task => saveTimeBlocks_processTask(task, block.startTime));
+            return [blockId, { ...block, tasks: tasksWithInfo }];
+        };
 
         const content = await this.app.vault.read(currentDayFile);
         
         // Convert timeBlocks to a format that includes both ID and text for each task
         const timeBlocksData = Object.fromEntries(
-            Array.from(this.timeBlocks.entries()).map(([blockId, block]) => {
-                const tasksWithInfo = block.tasks.map(task => {
-                    const taskId = this.getTaskIdentifier(task);
-                    const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
-                    if (taskIdentity) {
-                        return {
-                            id: taskIdentity.identifier,
-                            text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim(),
-                            timeSlot: block.startTime
-                        };
-                    }
-                    this.debugLog('Warning: Task not found in cache during save:', taskId);
-                    return { id: taskId, text: null, timeSlot: block.startTime };
-                });
-
-                return [blockId, {
-                    ...block,
-                    tasks: tasksWithInfo
-                }];
-            })
+            Array.from(this.timeBlocks.entries()).map(([blockId, block]) => 
+                saveTimeBlocks_processTimeBlock(blockId, block)
+            )
         );
 
         const timeBlocksJson = JSON.stringify(timeBlocksData, null, 2);

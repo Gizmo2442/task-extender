@@ -70,38 +70,9 @@ export class TaskManager {
             }
         }
     }
-    
-    private removeTask(taskId: string) 
+
+    public async createTaskElement(taskText: string, taskIdentity: TaskIdentity): Promise<HTMLElement | null> 
     {
-        this.taskCache.delete(taskId);
-        const taskEl = this.taskElements.get(taskId);
-        if (taskEl) {
-            taskEl.remove();
-            this.taskElements.delete(taskId);
-        }
-    }
-
-    private setupTaskListeners(taskEl: HTMLElement, taskIdentity: TaskIdentity) {
-        // Setup drag handle
-        const dragHandle = taskEl.querySelector('.task-drag-handle');
-        if (dragHandle) {
-            this.setupTaskDragListeners(dragHandle as HTMLElement, taskIdentity.identifier, taskEl);
-        }
-
-        // Setup checkbox
-        const checkbox = taskEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
-        if (checkbox) {
-            this.setupCheckboxListeners(checkbox, taskIdentity);
-        }
-
-        // Setup time estimate button
-        const stopwatchEl = taskEl.querySelector('.task-stopwatch');
-        if (stopwatchEl) {
-            this.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
-        }
-    }
-
-    async createTaskElement(taskText: string, taskIdentity: TaskIdentity): Promise<HTMLElement | null> {
         // Create task container
         const taskEl = document.createElement('div');
         taskEl.addClass('timeline-task');
@@ -178,7 +149,7 @@ export class TaskManager {
         return taskEl;
     }
 
-    setupCheckboxListeners(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) {
+    public setupCheckboxListeners(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) {
         checkbox.addEventListener('click', async (e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -217,7 +188,7 @@ export class TaskManager {
         });
     }
 
-    setupTaskDragListeners(dragHandle: HTMLElement, identifier: string, taskEl: HTMLElement) {
+    public setupTaskDragListeners(dragHandle: HTMLElement, identifier: string, taskEl: HTMLElement) {
         dragHandle.setAttribute('draggable', 'true');
         dragHandle.addEventListener('dragstart', (e) => {
             e.dataTransfer?.setData('text/plain', identifier);
@@ -229,7 +200,7 @@ export class TaskManager {
         });
     }
 
-    setupTimeEstimateButtonListeners(stopwatchEl: HTMLElement, taskIdentity: TaskIdentity) {
+    public setupTimeEstimateButtonListeners(stopwatchEl: HTMLElement, taskIdentity: TaskIdentity) {
         stopwatchEl.addEventListener('click', async (e) => {
             e.stopPropagation();
             const modal = new TimeEstimateModal(this.app);
@@ -272,7 +243,7 @@ export class TaskManager {
     }
 
     // TODO: This should not be needed as a public method, and private version should be renamed to something like "generateTaskIdentity"
-    getTaskIdentity(taskText: string): TaskIdentity {
+    public getTaskIdentity(taskText: string): TaskIdentity {
         const metadata = TaskParser.parseTask(taskText, this.view.getPlugin().settings);
         
         // First try to get ID from metadata
@@ -300,26 +271,111 @@ export class TaskManager {
         };
     }
 
-    private generateTaskId(): string {
-        return 'task_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    async addIdToTask(taskText: string): Promise<string> {
-        if (taskText.includes('🆔')) {
-            return taskText; // Already has an ID
-        }
-
-        const id = this.generateTaskId();
-        return taskText.trim() + ` 🆔 ${id}`;
-    }
-
-    async updateTaskInFile(originalTask: string, newTask: string, filePath: string) {
+    public async updateTaskInFile(originalTask: string, newTask: string, filePath: string) {
         const file = this.app.vault.getAbstractFileByPath(filePath);
         if (file instanceof TFile) {
             const content = await this.app.vault.read(file);
             const newContent = content.replace(originalTask, newTask);
             await this.app.vault.modify(file, newContent);
         }
+    }
+
+    public clearCaches() {
+        this.taskCache.clear();
+        this.fileCache.clear();
+    }
+
+    public getTaskCache() {
+        return this.taskCache;
+    }
+
+    public getFileCache() {
+        return this.fileCache;
+    }
+
+    public getTaskElements() {
+        return this.taskElements;
+    }
+
+    public async ensureTaskHasId(taskIdentifier: string): Promise<TaskIdentity | null> 
+    {
+        const taskIdentity = this.taskCache.get(taskIdentifier);
+        if (!taskIdentity) return null;
+
+        if (!taskIdentity.originalContent.includes('🆔')) 
+        {
+            const taskContent = await this.addIdToTask(taskIdentity.originalContent);
+            await this.updateTaskInFile(taskIdentity.originalContent, taskContent, taskIdentity.filePath);
+            
+            const newIdentity = this.getTaskIdentity(taskContent);
+            newIdentity.filePath = taskIdentity.filePath;
+            this.taskCache.set(newIdentity.identifier, newIdentity);
+            return newIdentity;
+        }
+        else
+        {
+            const idMatch = taskIdentity.originalContent.match(/🆔 ([a-zA-Z0-9_]+)/);
+            if (idMatch) 
+            {
+                const newId = idMatch[1];
+                if (taskIdentity.identifier !== newId) 
+                {
+                    this.taskCache.delete(taskIdentity.identifier);
+                    taskIdentity.identifier = newId;
+                    this.taskCache.set(newId, taskIdentity);
+                }
+                return taskIdentity;
+            }
+        }
+
+        return taskIdentity;
+    }
+
+    public setTaskFilePath(taskIdentifier: string, filePath: string): void
+    {
+        const taskIdentity = this.taskCache.get(taskIdentifier);
+        if (!taskIdentity || taskIdentity.filePath === filePath) return;
+
+        taskIdentity.filePath = filePath;
+        this.taskCache.set(taskIdentifier, taskIdentity);
+    }
+    
+    /////////////////////////////////////////
+    // Private methods
+    /////////////////////////////////////////
+    
+    private removeTask(taskId: string) 
+    {
+        this.taskCache.delete(taskId);
+        const taskEl = this.taskElements.get(taskId);
+        if (taskEl) {
+            taskEl.remove();
+            this.taskElements.delete(taskId);
+        }
+    }
+
+    private setupTaskListeners(taskEl: HTMLElement, taskIdentity: TaskIdentity) {
+        // Setup drag handle
+        const dragHandle = taskEl.querySelector('.task-drag-handle');
+        if (dragHandle) {
+            this.setupTaskDragListeners(dragHandle as HTMLElement, taskIdentity.identifier, taskEl);
+        }
+
+        // Setup checkbox
+        const checkbox = taskEl.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        if (checkbox) {
+            this.setupCheckboxListeners(checkbox, taskIdentity);
+        }
+
+        // Setup time estimate button
+        const stopwatchEl = taskEl.querySelector('.task-stopwatch');
+        if (stopwatchEl) {
+            this.setupTimeEstimateButtonListeners(stopwatchEl as HTMLElement, taskIdentity);
+        }
+    }
+
+    private generateTaskId(): string {
+        return 'task_' + Math.random().toString(36).substr(2, 9);
     }
 
     private formatTimeEstimate(estimate: { days: number, hours: number, minutes: number }): string {
@@ -330,20 +386,12 @@ export class TaskManager {
         return parts.join(' ');
     }
 
-    clearCaches() {
-        this.taskCache.clear();
-        this.fileCache.clear();
-    }
+    private async addIdToTask(taskText: string): Promise<string> {
+        if (taskText.includes('🆔')) {
+            return taskText; // Already has an ID
+        }
 
-    getTaskCache() {
-        return this.taskCache;
-    }
-
-    getFileCache() {
-        return this.fileCache;
-    }
-
-    getTaskElements() {
-        return this.taskElements;
+        const id = this.generateTaskId();
+        return taskText.trim() + ` 🆔 ${id}`;
     }
 }
