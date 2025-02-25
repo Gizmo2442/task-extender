@@ -2,18 +2,12 @@ import { App, TFile } from 'obsidian';
 import type { ITimelineView } from './TimelineInterfaces';
 import type { TaskIdentity } from './TaskManager';
 
-interface TaskInfo {
-    id: string | null;
-    text: string | null;
-    timeSlot: number;
-}
-
 export interface TimeBlock {
     id: string;
     title: string;
     startTime: number;  // Decimal hour (e.g., 9.25 for 9:15)
     endTime: number;    // Decimal hour (e.g., 10.5 for 10:30)
-    tasks: (string | TaskInfo)[];
+    tasks: TaskIdentity[];
 }
 
 export class TimeBlockManager {
@@ -43,37 +37,35 @@ export class TimeBlockManager {
                 for (const [blockId, blockData] of Object.entries(timeBlocksData)) 
                 {
                     const block = blockData as TimeBlock;
-                    const processedTasks: string[] = [];
+                    const processedTasks: TaskIdentity[] = [];
                     
                     // Process each task in the block
-                    for (const taskInfo of block.tasks) 
+                    for (const taskData of block.tasks) 
                     {
-                        const { id, text } = (typeof taskInfo === 'string' ? { id: null, text: taskInfo } : taskInfo) as TaskInfo;
+                        const { id, text } = taskData as any;
                         
-                        // Try to find the task in files
-                        const files = this.app.vault.getMarkdownFiles();
-                        let found = false;
-                        
-                        for (const file of files) 
-                        {
-                            const fileContent = await this.app.vault.read(file);
-                            const lines = fileContent.split('\n');
-                            const taskLine = lines.find(line => 
-                                (id && line.includes(`🆔 ${id}`)) || 
-                                (text && this.view.getTaskManager().getTaskIdentity(line).identifier === text)
-                            );
-                            
-                            if (taskLine) 
-                            {
-                                const taskIdentity = this.view.getTaskManager().createTask(taskLine, file.path);
-                                processedTasks.push(taskIdentity.identifier);
-                                found = true;
-                                break;
+                        // Try to get the task directly from the task manager by ID
+                        if (id) {
+                            const taskIdentity = this.view.getTaskManager().getTask(id);
+                            if (taskIdentity) {
+                                processedTasks.push(taskIdentity);
+                                continue;
                             }
                         }
                         
-                        if (!found)
+                        // Fallback: If task not found by ID but we have text, try to find by content
+                        if (text) {
+                            // Use the TaskManager's findTaskByContent method to find a matching task
+                            const matchingTask = this.view.getTaskManager().findTaskByContent(text);
+                            if (matchingTask) {
+                                processedTasks.push(matchingTask);
+                                continue;
+                            }
+                        }
+                        
+                        if (this.debugEnabled) {
                             console.warn('Could not find task:', id || text);
+                        }
                     }
                     
                     // Create the block with found tasks
@@ -97,25 +89,12 @@ export class TimeBlockManager {
     {
         if (!currentDayFile) return;
         
-        // Helper functions for saving time blocks
-        const saveTimeBlocks_processTask = (task: string | TaskInfo, blockStartTime: number): TaskInfo => {
-            const taskId = this.getTaskIdentifier(task);
-            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
-
-            if (taskIdentity) {
-                return {
-                    id: taskIdentity.identifier,
-                    text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim(),
-                    timeSlot: blockStartTime
-                };
-            } else {
-                this.debugLog('Warning: Task not found in cache during save:', taskId);
-                return { id: taskId, text: null, timeSlot: blockStartTime };
-            }
-        };
-
-        const saveTimeBlocks_processTimeBlock = (blockId: string, block: TimeBlock): [string, TimeBlock] => {
-            const tasksWithInfo = block.tasks.map(task => saveTimeBlocks_processTask(task, block.startTime));
+        // Helper function to process tasks for saving
+        const saveTimeBlocks_processTimeBlock = (blockId: string, block: TimeBlock): [string, any] => {
+            const tasksWithInfo = block.tasks.map(taskIdentity => ({
+                id: taskIdentity.identifier,
+                text: taskIdentity.originalContent.replace(/^- \[[ x]\] /, '').trim()
+            }));
             return [blockId, { ...block, tasks: tasksWithInfo }];
         };
 
@@ -146,6 +125,7 @@ export class TimeBlockManager {
 
     renderTimeBlock(block: TimeBlock, parent: DocumentFragment | HTMLElement) {
         // Remove existing block if it exists
+        console.log('renderTimeBlock', block);
         const existingBlock = parent.querySelector(`[data-block-id="${block.id}"]`);
         if (existingBlock) {
             existingBlock.remove();
@@ -192,8 +172,8 @@ export class TimeBlockManager {
 
         this.setupBlockDropZone(blockEl, block.id);
 
-        block.tasks.forEach(task => {
-            this.renderTaskInBlock(this.getTaskIdentifier(task), blockEl);
+        block.tasks.forEach(taskIdentity => {
+            this.renderTaskInBlock(this.getTaskIdentifier(taskIdentity), blockEl);
         });
 
         parent.appendChild(blockEl);
@@ -211,9 +191,7 @@ export class TimeBlockManager {
         let totalTaskMinutes = 0;
         const blockDurationMinutes = (block.endTime - block.startTime) * 60;
 
-        block.tasks.forEach(task => {
-            const taskId = this.getTaskIdentifier(task);
-            const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskId);
+        block.tasks.forEach(taskIdentity => {
             if (taskIdentity?.metadata.timeEstimate) {
                 totalTaskMinutes += taskIdentity.metadata.timeEstimate.totalMinutes;
             }
@@ -234,26 +212,25 @@ export class TimeBlockManager {
 
     private async renderTaskInBlock(taskKey: string, container: HTMLElement) {
         // First get the latest task content from cache
-        const taskIdentity = this.view.getTaskManager().getTaskCache().get(taskKey);
+        const taskIdentity = this.view.getTaskManager().getTask(taskKey);
         if (!taskIdentity) {
             // Try to find task by ID in files if not in cache
             const files = this.app.vault.getMarkdownFiles();
             for (const file of files) {
                 const content = await this.app.vault.read(file);
                 const lines = content.split('\n');
-                const taskLine = lines.find(line => 
-                    line.includes(`🆔 ${taskKey}`) || 
-                    this.view.getTaskManager().getTaskIdentity(line).identifier === taskKey
-                );
-                if (taskLine) {
-                    const newIdentity = this.view.getTaskManager().getTaskIdentity(taskLine);
-                    newIdentity.filePath = file.path;
-                    this.view.getTaskManager().getTaskCache().set(taskKey, newIdentity);
-                    const taskEl = await this.view.getTaskManager().createTaskElement(taskLine, newIdentity);
-                    if (taskEl) {
-                        container.appendChild(taskEl);
+                
+                for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+                    const line = lines[lineIndex];
+                    const newIdentity = this.view.getTaskManager().createTask(line, file.path, lineIndex + 1);
+                    
+                    if (newIdentity.identifier === taskKey) {
+                        const taskEl = await this.view.getTaskManager().createTaskElement(line, newIdentity);
+                        if (taskEl) {
+                            container.appendChild(taskEl);
+                        }
+                        return;
                     }
-                    return;
                 }
             }
             console.warn('Task not found in cache or files:', taskKey);
@@ -420,7 +397,7 @@ export class TimeBlockManager {
         }
     }
 
-    private getTaskIdentifier(task: string | TaskInfo): string {
-        return typeof task === 'string' ? task : (task.id || task.text || '');
+    private getTaskIdentifier(taskIdentity: TaskIdentity): string {
+        return taskIdentity.identifier;
     }
 }

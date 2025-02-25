@@ -314,21 +314,14 @@ export class TimelineView extends View implements ITimelineView {
         
         // Process new/updated tasks in the file
         const lines = content.split('\n');
-        for (const line of lines) {
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
             if (line.match(/^- \[[ x]\]/)) {
-                const taskIdentity = this.taskManager.getTaskIdentity(line);
-                taskIdentity.filePath = file.path;
+                const taskIdentity = this.taskManager.createTask(line, file.path, lineIndex + 1);
                 
-                const existingTask = this.taskManager.getTaskCache().get(taskIdentity.identifier);
-                if (!existingTask ||
-                    existingTask.originalContent !== taskIdentity.originalContent) {
-                    
-                    this.taskManager.getTaskCache().set(taskIdentity.identifier, taskIdentity);
-                    
-                    if (taskIdentity.metadata.dueDate && 
-                        moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
-                        await this.taskManager.createTaskElement(line, taskIdentity);
-                    }
+                if (taskIdentity.metadata.dueDate && 
+                    moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
+                    await this.taskManager.createTaskElement(line, taskIdentity);
                 }
                 previousTasksInFile.delete(taskIdentity.identifier);
             }
@@ -370,12 +363,14 @@ export class TimelineView extends View implements ITimelineView {
         const scrollPosition = this.timelineEl.scrollTop;
 
         try {
-            // Load data in parallel
+            // First load scheduled tasks and tasks
             await Promise.all([
                 this.loadScheduledTasks(),
-                this.timeBlockManager.loadTimeBlocks(this.currentDayFile),
                 this.loadTasks()
             ]);
+            
+            // Then load time blocks after tasks are loaded
+            await this.timeBlockManager.loadTimeBlocks(this.currentDayFile);
 
             // Find the unscheduled drop zone
             const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
@@ -386,7 +381,7 @@ export class TimelineView extends View implements ITimelineView {
                 this.taskManager.getTaskElements().forEach((taskEl, identifier) => {
                     let isScheduled = false;
                     this.timeBlockManager.getTimeBlocks().forEach(block => {
-                        if (block.tasks.includes(identifier)) {
+                        if (block.tasks.some(taskIdentity => taskIdentity.identifier === identifier)) {
                             isScheduled = true;
                         }
                     });
