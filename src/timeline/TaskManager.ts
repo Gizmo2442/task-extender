@@ -62,25 +62,37 @@ export class TaskManager {
         return taskIdentity;
     }
 
-    public async processFile(file: TFile): Promise<void> {
+    public async processFile(file: TFile, today: string) {
         const content = await this.app.vault.read(file);
         this.fileCache.set(file.path, content);
         
-        const lines = content.split('\n');
-        const foundTasks = new Set<string>();
+        // Keep track of tasks that existed in this file
+        const previousTasksInFile = new Set(
+            Array.from(this.taskCache.values())
+                .filter(task => task.filePath === file.path)
+                .map(task => task.identifier)
+        );
         
+        // Process new/updated tasks in the file
+        const lines = content.split('\n');
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             const line = lines[lineIndex];
             if (line.match(/^- \[[ x]\]/)) {
                 const taskIdentity = this.createTask(line, file.path, lineIndex + 1);
-                foundTasks.add(taskIdentity.identifier);
+                
+                if (taskIdentity.metadata.dueDate && 
+                    moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
+                    await this.createTaskElement(line, taskIdentity);
+                }
+                previousTasksInFile.delete(taskIdentity.identifier);
             }
         }
         
         // Remove tasks that no longer exist in this file
-        for (const [identifier, task] of this.taskCache.entries()) {
-            if (task.filePath === file.path && !foundTasks.has(identifier)) {
-                this.removeTask(identifier);
+        for (const taskId of previousTasksInFile) {
+            const task = this.taskCache.get(taskId);
+            if (task && task.filePath === file.path) {
+                this.removeTask(taskId);
             }
         }
     }
@@ -344,7 +356,7 @@ export class TaskManager {
 
     private areTasksSimilar(text1: string, text2: string): boolean {
         // Simple Levenshtein distance with a threshold
-        const maxDistance = Math.floor(Math.max(text1.length, text2.length) * 0.2); // Allow 20% difference
+        const maxDistance = Math.min(Math.floor(Math.max(text1.length, text2.length) * 0.2), 7); // Allow 20% difference with an upper bound of 7
         return this.levenshteinDistance(text1, text2) <= maxDistance;
     }
 

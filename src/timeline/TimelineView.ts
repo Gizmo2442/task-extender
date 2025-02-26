@@ -284,7 +284,7 @@ export class TimelineView extends View implements ITimelineView {
             const files = this.app.vault.getMarkdownFiles();
             
             for (const file of files) {
-                await this.processFile(file, today);
+                await this.taskManager.processFile(file, today);
             }
         } else {
             // For subsequent loads, only process modified files
@@ -293,51 +293,11 @@ export class TimelineView extends View implements ITimelineView {
                 .filter((file): file is TFile => file instanceof TFile);
                 
             for (const file of modifiedFiles) {
-                await this.processFile(file, today);
+                await this.taskManager.processFile(file, today);
             }
             
             // Clear the modified files set after processing
             this.modifiedFiles.clear();
-        }
-    }
-
-    private async processFile(file: TFile, today: string) {
-        const content = await this.app.vault.read(file);
-        this.taskManager.getFileCache().set(file.path, content);
-        
-        // Keep track of tasks that existed in this file
-        const previousTasksInFile = new Set(
-            Array.from(this.taskManager.getTaskCache().values())
-                .filter(task => task.filePath === file.path)
-                .map(task => task.identifier)
-        );
-        
-        // Process new/updated tasks in the file
-        const lines = content.split('\n');
-        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-            const line = lines[lineIndex];
-            if (line.match(/^- \[[ x]\]/)) {
-                const taskIdentity = this.taskManager.createTask(line, file.path, lineIndex + 1);
-                
-                if (taskIdentity.metadata.dueDate && 
-                    moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
-                    await this.taskManager.createTaskElement(line, taskIdentity);
-                }
-                previousTasksInFile.delete(taskIdentity.identifier);
-            }
-        }
-        
-        // Remove tasks that no longer exist in this file
-        for (const taskId of previousTasksInFile) {
-            const task = this.taskManager.getTaskCache().get(taskId);
-            if (task && task.filePath === file.path) {
-                this.taskManager.getTaskCache().delete(taskId);
-                const taskEl = this.taskManager.getTaskElements().get(taskId);
-                if (taskEl) {
-                    taskEl.remove();
-                    this.taskManager.getTaskElements().delete(taskId);
-                }
-            }
         }
     }
 
