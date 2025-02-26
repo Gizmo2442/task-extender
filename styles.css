@@ -436,3 +436,22 @@ body.timeline-resizing .unscheduled-tasks {
     font-weight: 500;
     color: var(--text-muted);
 }
+
+/* Task status styles */
+.timeline-task.task-found-by-content {
+    border-left: 4px solid var(--color-yellow);
+}
+
+.timeline-task.task-found-by-content .task-text {
+    color: var(--color-yellow);
+    font-weight: 500;
+}
+
+.timeline-task.task-not-found {
+    border-left: 4px solid var(--color-red);
+}
+
+.timeline-task.task-not-found .task-text {
+    color: var(--color-red);
+    font-weight: 700;
+}

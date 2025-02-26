@@ -1,5 +1,5 @@
 import { MarkdownRenderer, TFile, App } from 'obsidian';
-import { TaskParser, type TaskMetadata } from '../taskParser';
+import { TaskParser, type TaskMetadata } from '../TaskParser';
 import type { ITimelineView } from './TimelineInterfaces';
 import { moment } from 'obsidian';
 import { TimeEstimateModal } from './TimeEstimateModal';
@@ -56,7 +56,7 @@ export class TaskManager {
             return existingTask;
         }
 
-        const taskIdentity = this.generateTaskIdentity(taskText, filePath);
+        const taskIdentity = this.generateTaskIdentity(taskText, filePath, lineNumber);
         this.taskCache.set(taskIdentity.identifier, taskIdentity);
         this.lineTaskMap.set(`${filePath}:${lineNumber}`, taskIdentity.identifier);
         return taskIdentity;
@@ -102,17 +102,18 @@ export class TaskManager {
         const textEl = document.createElement('div');
         textEl.addClass('task-text');
         
-        // Find current task status by searching files
+        // Find current task status by checking the TaskIdentity's file and line number
         let currentTaskStatus = false;
-        const files = this.app.vault.getMarkdownFiles();
-        for (const file of files) {
+        const file = this.app.vault.getAbstractFileByPath(taskIdentity.filePath);
+        if (file instanceof TFile) 
+        {
             const content = await this.app.vault.read(file);
             const lines = content.split('\n');
-            const taskLine = lines.find(line => line.includes(taskIdentity.identifier));
-            if (taskLine) {
+            const taskLine = lines[taskIdentity.lineNumber - 1]; // Convert to zero-based index
+            if (taskLine && taskLine.includes(taskIdentity.originalContent))
                 currentTaskStatus = taskLine.includes('- [x]');
-                break;
-            }
+            else
+                console.error(`Task mismatch error: The task on the specified line does not match the expected task content. Expected: "${taskIdentity.originalContent}", Found: "${taskLine}" at line number ${taskIdentity.lineNumber} in file ${taskIdentity.filePath}`);
         }
         
         // Use Obsidian's markdown renderer for the checkbox
@@ -157,98 +158,6 @@ export class TaskManager {
         return taskEl;
     }
 
-    public setupCheckboxListeners(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) {
-        checkbox.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-
-            const files = this.app.vault.getMarkdownFiles();
-            
-            for (const file of files) {
-                const content = await this.app.vault.read(file);
-                const lines = content.split('\n');
-                const lineIndex = lines.findIndex(line => line.includes(taskIdentity.identifier));
-                
-                if (lineIndex !== -1) {
-                    const originalLine = lines[lineIndex];
-                    const isCurrentlyChecked = originalLine.includes('- [x]');
-                    
-                    const newContent = lines.map((line, index) => {
-                        if (index === lineIndex) {
-                            let newLine;
-                            if (!isCurrentlyChecked) {
-                                newLine = line.replace(/^-\s*\[\s*\]/, '- [x]') + 
-                                       (line.includes('✅') ? '' : ` ✅ ${moment().format('YYYY-MM-DD')}`);
-                            } else {
-                                newLine = line.replace(/^-\s*\[x\]/, '- [ ]').replace(/✅\s*\d{4}-\d{2}-\d{2}/, '').trim();
-                            }
-
-                            checkbox.checked = !isCurrentlyChecked;
-                            return newLine;
-                        }
-                        return line;
-                    }).join('\n');
-                    
-                    await this.app.vault.modify(file, newContent);
-                    break;
-                }
-            }
-        });
-    }
-
-    public setupTaskDragListeners(dragHandle: HTMLElement, identifier: string, taskEl: HTMLElement) {
-        dragHandle.setAttribute('draggable', 'true');
-        dragHandle.addEventListener('dragstart', (e) => {
-            e.dataTransfer?.setData('text/plain', identifier);
-            taskEl.addClass('dragging');
-        });
-
-        dragHandle.addEventListener('dragend', () => {
-            taskEl.removeClass('dragging');
-        });
-    }
-
-    public setupTimeEstimateButtonListeners(stopwatchEl: HTMLElement, taskIdentity: TaskIdentity) {
-        stopwatchEl.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const modal = new TimeEstimateModal(this.app);
-            const result = await modal.openAndGetValue();
-            
-            if (result) {
-                let newContent = taskIdentity.originalContent;
-                
-                // Remove existing time estimate if present
-                newContent = newContent.replace(/⏱️\s*(?:\d+d)?\s*(?:\d+h)?\s*(?:\d+m)?\s*/, '');
-                
-                // Add new time estimate before any other metadata
-                const metadataMatch = newContent.match(this.METADATA_EMOJI_PATTERN);
-                if (metadataMatch) {
-                    const index = metadataMatch.index!;
-                    newContent = newContent.slice(0, index) + result + ' ' + newContent.slice(index);
-                } else {
-                    newContent = newContent.trim() + ' ' + result;
-                }
-                
-                // Update task in file and cache
-                await this.updateTaskInFile(taskIdentity.originalContent, newContent, taskIdentity.filePath);
-                this.updateTaskContent(taskIdentity.identifier, newContent, taskIdentity.filePath, taskIdentity.lineNumber);
-                
-                // Re-render all instances of this task
-                const taskElements = Array.from(document.querySelectorAll(`[data-task="${taskIdentity.identifier}"]`));
-                for (const element of taskElements) {
-                    const newTaskEl = await this.createTaskElement(newContent, taskIdentity);
-                    if (newTaskEl && element.parentElement) {
-                        element.parentElement.replaceChild(newTaskEl, element);
-                    }
-                }
-
-                // Trigger a refresh of any time blocks containing this task
-                await this.view.refreshView();
-            }
-        });
-    }
-
-    // TODO: This should not be needed as a public method, and private version should be renamed to something like "generateTaskIdentity"
     public getTaskIdentity(taskText: string, filePath: string = '', lineNumber: number = 0): TaskIdentity {
         const metadata = TaskParser.parseTask(taskText, this.view.getPlugin().settings);
         
@@ -364,7 +273,7 @@ export class TaskManager {
     }
     
 
-    private generateTaskIdentity(taskText: string, filePath: string): TaskIdentity {
+    private generateTaskIdentity(taskText: string, filePath: string, lineNumber: number): TaskIdentity {
         const baseContent = this.stripTaskMetadata(taskText);
         const hashInput = `${baseContent}|${filePath}`;
         const hash = this.generateHash(hashInput);
@@ -374,7 +283,7 @@ export class TaskManager {
             originalContent: taskText,
             metadata: TaskParser.parseTask(taskText, this.view.getPlugin().settings),
             filePath,
-            lineNumber: 0 // Will be set by updateTaskContent
+            lineNumber: lineNumber
         };
     }
 
@@ -491,5 +400,95 @@ export class TaskManager {
             hash = hash & hash; // Convert to 32-bit integer
         }
         return 'task_' + Math.abs(hash).toString(36);
+    }
+
+    private setupCheckboxListeners(checkbox: HTMLInputElement, taskIdentity: TaskIdentity) 
+    {
+        checkbox.addEventListener('click', async (e) => 
+        {
+            e.stopPropagation();
+            e.preventDefault();
+
+            const file = this.app.vault.getAbstractFileByPath(taskIdentity.filePath);
+            if (file instanceof TFile) 
+            {
+                const content = await this.app.vault.read(file);
+                const lines = content.split('\n');
+                const lineIndex = taskIdentity.lineNumber - 1; // Convert to zero-based index
+
+                if (lines[lineIndex] && lines[lineIndex].includes(taskIdentity.originalContent)) 
+                {
+                    const originalLine = lines[lineIndex];
+                    const isCurrentlyChecked = originalLine.includes('- [x]');
+
+                    const newLine = isCurrentlyChecked
+                        ? originalLine.replace(/^-\s*\[x\]/, '- [ ]').replace(/✅\s*\d{4}-\d{2}-\d{2}/, '').trim()
+                        : originalLine.replace(/^-\s*\[\s*\]/, '- [x]') + 
+                          (originalLine.includes('✅') ? '' : ` ✅ ${moment().format('YYYY-MM-DD')}`);
+
+                    lines[lineIndex] = newLine;
+                    checkbox.checked = !isCurrentlyChecked;
+
+                    const newContent = lines.join('\n');
+                    await this.app.vault.modify(file, newContent);
+                } 
+                else 
+                {
+                    console.error('Task mismatch error: The task on the specified line does not match the expected task content.');
+                }
+            }
+        });
+    }
+
+    private setupTaskDragListeners(dragHandle: HTMLElement, identifier: string, taskEl: HTMLElement) {
+        dragHandle.setAttribute('draggable', 'true');
+        dragHandle.addEventListener('dragstart', (e) => {
+            e.dataTransfer?.setData('text/plain', identifier);
+            taskEl.addClass('dragging');
+        });
+
+        dragHandle.addEventListener('dragend', () => {
+            taskEl.removeClass('dragging');
+        });
+    }
+
+    private setupTimeEstimateButtonListeners(stopwatchEl: HTMLElement, taskIdentity: TaskIdentity) {
+        stopwatchEl.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const modal = new TimeEstimateModal(this.app);
+            const result = await modal.openAndGetValue();
+            
+            if (result) {
+                let newContent = taskIdentity.originalContent;
+                
+                // Remove existing time estimate if present
+                newContent = newContent.replace(/⏱️\s*(?:\d+d)?\s*(?:\d+h)?\s*(?:\d+m)?\s*/, '');
+                
+                // Add new time estimate before any other metadata
+                const metadataMatch = newContent.match(this.METADATA_EMOJI_PATTERN);
+                if (metadataMatch) {
+                    const index = metadataMatch.index!;
+                    newContent = newContent.slice(0, index) + result + ' ' + newContent.slice(index);
+                } else {
+                    newContent = newContent.trim() + ' ' + result;
+                }
+                
+                // Update task in file and cache
+                await this.updateTaskInFile(taskIdentity.originalContent, newContent, taskIdentity.filePath);
+                this.updateTaskContent(taskIdentity.identifier, newContent, taskIdentity.filePath, taskIdentity.lineNumber);
+                
+                // Re-render all instances of this task
+                const taskElements = Array.from(document.querySelectorAll(`[data-task="${taskIdentity.identifier}"]`));
+                for (const element of taskElements) {
+                    const newTaskEl = await this.createTaskElement(newContent, taskIdentity);
+                    if (newTaskEl && element.parentElement) {
+                        element.parentElement.replaceChild(newTaskEl, element);
+                    }
+                }
+
+                // Trigger a refresh of any time blocks containing this task
+                await this.view.refreshView();
+            }
+        });
     }
 }
