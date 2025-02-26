@@ -158,7 +158,6 @@ export class TimeBlockManager {
 
     renderTimeBlock(block: TimeBlock, parent: DocumentFragment | HTMLElement) {
         // Remove existing block if it exists
-        console.log('renderTimeBlock', block);
         const existingBlock = parent.querySelector(`[data-block-id="${block.id}"]`);
         if (existingBlock) {
             existingBlock.remove();
@@ -206,7 +205,7 @@ export class TimeBlockManager {
         this.setupBlockDropZone(blockEl, block.id);
 
         block.tasks.forEach(taskIdentity => {
-            this.renderTaskInBlock(this.getTaskIdentifier(taskIdentity), blockEl);
+            this.renderTaskInBlock(taskIdentity, blockEl);
         });
 
         parent.appendChild(blockEl);
@@ -243,16 +242,20 @@ export class TimeBlockManager {
         return 'var(--color-red)';
     }
 
-    private async renderTaskInBlock(taskKey: string, container: HTMLElement) {
+    private async renderTaskInBlock(taskIdentity: TimeBlockTaskIdentity, container: HTMLElement) 
+    {
         // First get the latest task content from cache
-        const taskIdentity = this.view.getTaskManager().getTask(taskKey) as TimeBlockTaskIdentity;
+        const taskIdentityFromCache = this.view.getTaskManager().getTask(taskIdentity.identifier) as TimeBlockTaskIdentity;
         
-        if (!taskIdentity) {
+        // A bit unsure if this block is needed
+        if (!taskIdentityFromCache) 
+        {
             // Check if this is a placeholder task in any of the time blocks
             let foundPlaceholder = false;
-            this.timeBlocks.forEach(block => {
+            this.timeBlocks.forEach(block => 
+            {
                 const placeholderTask = block.tasks.find(t => 
-                    t.identifier === taskKey && (t as TimeBlockTaskIdentity).status === TaskStatus.NOT_FOUND
+                    t.identifier === taskIdentity.identifier && (t as TimeBlockTaskIdentity).status === TaskStatus.NOT_FOUND
                 );
                 if (placeholderTask) {
                     foundPlaceholder = true;
@@ -260,19 +263,20 @@ export class TimeBlockManager {
                 }
             });
             
-            if (!foundPlaceholder) {
-                console.warn('Task not found in cache or files:', taskKey);
-            }
+            if (!foundPlaceholder)
+                console.warn('Task not found in cache or files:', taskIdentity.identifier);
+
             return;
         }
 
         // Create a new task element with the latest content
         const taskEl = await this.view.getTaskManager().createTaskElement(taskIdentity.originalContent, taskIdentity);
-        if (taskEl) {
+        if (taskEl) 
+        {
             // Apply styling based on task status
-            if ((taskIdentity as TimeBlockTaskIdentity).status === TaskStatus.FOUND_BY_CONTENT) {
+            if (taskIdentity.status === TaskStatus.FOUND_BY_CONTENT) {
                 taskEl.addClass('task-found-by-content');
-            } else if ((taskIdentity as TimeBlockTaskIdentity).status === TaskStatus.NOT_FOUND) {
+            } else if (taskIdentity.status === TaskStatus.NOT_FOUND) {
                 taskEl.addClass('task-not-found');
             }
             
