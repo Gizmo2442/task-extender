@@ -34,19 +34,20 @@ export class TaskManager {
         return this.taskCache.get(identifier);
     }
 
-    public findTaskByContent(taskText: string): TaskIdentity | undefined {
+    public findTasksByContent(taskText: string): TaskIdentity[] {
         // Strip metadata from the search text
         const strippedContent = this.stripTaskMetadata(taskText);
+        const similarTasks: TaskIdentity[] = [];
         
         // Search through all tasks in the cache
         for (const task of this.taskCache.values()) {
             const taskContent = this.stripTaskMetadata(task.originalContent);
             if (this.areTasksSimilar(strippedContent, taskContent)) {
-                return task;
+                similarTasks.push(task);
             }
         }
         
-        return undefined;
+        return similarTasks;
     }
 
     public createTask(taskText: string, filePath: string, lineNumber: number): TaskIdentity {
@@ -502,5 +503,100 @@ export class TaskManager {
                 await this.view.refreshView();
             }
         });
+    }
+    
+    public async showSimilarTasksModal(taskIdentity: TaskIdentity, blockId: string): Promise<void> {
+        // Find similar tasks
+        const similarTasks = this.findTasksByContent(taskIdentity.originalContent);
+        
+        // Create a modal
+        const modal = document.createElement('div');
+        modal.addClass('modal');
+        
+        const modalContent = document.createElement('div');
+        modalContent.addClass('modal-content');
+        modalContent.style.width = '500px';
+        modalContent.style.maxHeight = '80vh';
+        
+        const modalHeader = document.createElement('div');
+        modalHeader.addClass('modal-header');
+        modalHeader.innerHTML = '<h3>Select the correct task</h3>';
+        modalContent.appendChild(modalHeader);
+        
+        const modalDescription = document.createElement('div');
+        modalDescription.addClass('modal-description');
+        modalDescription.innerHTML = `<p>Found ${similarTasks.length} similar tasks. Select the correct task to use in this time block:</p>`;
+        modalContent.appendChild(modalDescription);
+        
+        const taskList = document.createElement('div');
+        taskList.addClass('similar-tasks-list');
+        taskList.style.maxHeight = '60vh';
+        taskList.style.overflowY = 'auto';
+        
+        // Add each similar task to the list
+        for (const task of similarTasks) {
+            const taskItem = document.createElement('div');
+            taskItem.addClass('similar-task-item');
+            taskItem.style.padding = '8px';
+            taskItem.style.margin = '4px 0';
+            taskItem.style.border = '1px solid var(--background-modifier-border)';
+            taskItem.style.borderRadius = '4px';
+            taskItem.style.cursor = 'pointer';
+            
+            const taskContent = document.createElement('div');
+            taskContent.addClass('task-content');
+            
+            // Show the task content
+            const contentText = document.createElement('p');
+            contentText.innerHTML = this.stripTaskMetadata(task.originalContent);
+            taskContent.appendChild(contentText);
+            
+            // Show the file path
+            const filePath = document.createElement('div');
+            filePath.addClass('task-filepath');
+            filePath.style.fontSize = '0.8em';
+            filePath.style.color = 'var(--text-muted)';
+            filePath.innerHTML = `<em>File: ${task.filePath}</em>`;
+            taskContent.appendChild(filePath);
+            
+            taskItem.appendChild(taskContent);
+            
+            // Add click handler to select this task
+            taskItem.addEventListener('click', async () => {
+                // Update the time block to use this task's ID
+                await this.view.getTimeBlockManager().updateTimeBlockTask(taskIdentity.identifier, task.identifier, blockId);
+                
+                // Close the modal
+                document.body.removeChild(modal);
+            });
+            
+            taskList.appendChild(taskItem);
+        }
+        
+        modalContent.appendChild(taskList);
+        
+        // Add a cancel button
+        const cancelButton = document.createElement('button');
+        cancelButton.addClass('mod-warning');
+        cancelButton.style.marginTop = '16px';
+        cancelButton.innerText = 'Cancel';
+        cancelButton.addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+        modalContent.appendChild(cancelButton);
+        
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+        
+        // Position modal in center
+        modalContent.style.position = 'fixed';
+        modalContent.style.top = '50%';
+        modalContent.style.left = '50%';
+        modalContent.style.transform = 'translate(-50%, -50%)';
+        modalContent.style.zIndex = '1000';
+        modalContent.style.backgroundColor = 'var(--background-primary)';
+        modalContent.style.padding = '20px';
+        modalContent.style.borderRadius = '8px';
+        modalContent.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
     }
 }

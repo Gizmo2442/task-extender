@@ -455,3 +455,49 @@ body.timeline-resizing .unscheduled-tasks {
     color: var(--color-red);
     font-weight: 700;
 }
+
+/* New styles for counter and fix button */
+.task-similar-counter {
+    color: var(--color-yellow);
+    font-size: 0.85em;
+    margin-right: 8px;
+    font-weight: 600;
+}
+
+.task-fix-button {
+    background-color: var(--color-yellow);
+    color: var(--text-on-accent);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.8em;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.task-fix-button:hover {
+    background-color: var(--color-orange);
+}
+
+.content-fix-container {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+}
+
+/* Similar tasks modal styles */
+.similar-tasks-list {
+    margin: 8px 0;
+}
+
+.similar-task-item {
+    transition: background-color 0.2s ease;
+}
+
+.similar-task-item:hover {
+    background-color: var(--background-secondary);
+}
+
+.task-filepath {
+    margin-top: 4px;
+}
