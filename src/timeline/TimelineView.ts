@@ -172,6 +172,12 @@ export class TimelineView extends View implements ITimelineView {
         // Add mouseup handler to document
         document.addEventListener('mouseup', async (e) => {
             if (this.isCreatingTimeBlock && this.timeBlockStart !== null) {
+                // Check if we clicked inside a modal
+                const clickedElement = e.target as HTMLElement;
+                if (clickedElement.closest('.modal')) {
+                    return;
+                }
+                
                 // Get the current time from the element under the mouse
                 const element = document.elementFromPoint(e.clientX, e.clientY);
                 const currentTime = element?.closest('.time-drop-zone')?.getAttribute('data-time');
@@ -235,6 +241,10 @@ export class TimelineView extends View implements ITimelineView {
     }
 
     private async createNewTimeBlock(startTime: number, endTime: number) {
+        // Reset time block creation state before opening modal
+        this.isCreatingTimeBlock = false;
+        this.timeBlockStart = null;
+        
         const modal = new TimeBlockModal(this.app);
         const title = await modal.openAndGetValue();
         if (!title) return;

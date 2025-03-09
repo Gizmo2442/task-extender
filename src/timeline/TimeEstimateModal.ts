@@ -27,7 +27,23 @@ export class TimeEstimateModal extends Modal {
                     });
             });
 
-        // Add OK button
+        // Get the input element to add keyboard listener
+        const inputEl = (textComponent.components[0] as TextComponent).inputEl as HTMLInputElement;
+        inputEl.focus();
+        
+        // Handle Enter key to confirm
+        inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+                if (this.validateTimeFormat()) {
+                    if (this.resolvePromise) {
+                        this.resolvePromise(`⏱️ ${this.timeEstimate}`);
+                    }
+                    this.close();
+                }
+            }
+        });
+
+        // Add buttons (OK and Cancel)
         const buttonSetting = new Setting(contentEl)
             .addButton(button => {
                 this.buttonComponent = button;
@@ -42,10 +58,27 @@ export class TimeEstimateModal extends Modal {
                             this.close();
                         }
                     });
+            })
+            .addButton(button => {
+                return button
+                    .setButtonText('Cancel')
+                    .onClick(() => {
+                        if (this.resolvePromise) {
+                            this.resolvePromise(null);
+                        }
+                        this.close();
+                    });
             });
 
-        const inputEl = (textComponent.components[0] as TextComponent).inputEl as HTMLInputElement;
-        inputEl.focus();
+        // Handle Escape key
+        contentEl.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (this.resolvePromise) {
+                    this.resolvePromise(null);
+                }
+                this.close();
+            }
+        });
 
         this.validateAndUpdateButton();
     }

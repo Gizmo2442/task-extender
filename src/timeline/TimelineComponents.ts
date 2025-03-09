@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TextComponent } from 'obsidian';
+import { App, Modal, Setting, TextComponent, ButtonComponent } from 'obsidian';
 
 export class TimeBlockModal extends Modal {
     private title: string = '';
@@ -33,7 +33,31 @@ export class TimeBlockModal extends Modal {
             }
         });
 
-        // Remove the buttons, just use Enter/Escape
+        // Add OK and Cancel buttons
+        new Setting(contentEl)
+            .addButton(button => {
+                return button
+                    .setButtonText('OK')
+                    .setCta()
+                    .onClick(() => {
+                        if (this.resolvePromise) {
+                            this.resolvePromise(this.title || null);
+                        }
+                        this.close();
+                    });
+            })
+            .addButton(button => {
+                return button
+                    .setButtonText('Cancel')
+                    .onClick(() => {
+                        if (this.resolvePromise) {
+                            this.resolvePromise(null);
+                        }
+                        this.close();
+                    });
+            });
+
+        // Handle Escape key
         contentEl.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 if (this.resolvePromise) {
