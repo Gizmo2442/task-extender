@@ -1,4 +1,4 @@
-import { View, WorkspaceLeaf, moment, TFile, App, debounce } from 'obsidian';
+import { View, WorkspaceLeaf, moment, TFile, App, debounce, Notice } from 'obsidian';
 import type TaskPlannerPlugin from '../main';
 import { TaskManager } from './TaskManager';
 import { TimeBlockManager } from './TimeBlockManager';
@@ -102,9 +102,6 @@ export class TimelineView extends View implements ITimelineView {
         // Setup splitter drag functionality
         setupSplitter(splitter, this.timelineEl, unscheduledArea);
 
-        // Create time slots
-        this.createTimeSlots();
-        
         // Register file change handler
         this.registerEvent(
             this.app.vault.on('modify', async (file) => {
@@ -245,6 +242,12 @@ export class TimelineView extends View implements ITimelineView {
         this.isCreatingTimeBlock = false;
         this.timeBlockStart = null;
         
+        // If there's no daily note, we can't create time blocks
+        if (!this.currentDayFile) {
+            new Notice("Cannot create time blocks: No daily note exists for today");
+            return;
+        }
+        
         const modal = new TimeBlockModal(this.app);
         const title = await modal.openAndGetValue();
         if (!title) return;
@@ -320,11 +323,9 @@ export class TimelineView extends View implements ITimelineView {
         if (dailyNotes.length > 0) {
             this.currentDayFile = dailyNotes[0];
         } else {
-            // Create today's file if it doesn't exist
-            this.currentDayFile = await this.app.vault.create(
-                `${today}.md`,
-                '# ' + moment().format('MMMM D, YYYY') + '\n\n```timeBlocks\n{}\n```'
-            );
+            // If no daily note exists, set currentDayFile to null
+            // This will result in an empty timeline
+            this.currentDayFile = null;
         }
     }
 
@@ -338,6 +339,30 @@ export class TimelineView extends View implements ITimelineView {
                 this.loadScheduledTasks(),
                 this.loadTasks()
             ]);
+            
+            // Clear the timeline
+            this.timelineEl.empty();
+            
+            // Recreate time slots
+            this.createTimeSlots();
+            
+            // If there's no daily note, show a message
+            if (!this.currentDayFile) {
+                const messageEl = this.timelineEl.createEl('div', { 
+                    cls: 'timeline-no-daily-note-message',
+                    attr: { style: 'text-align: center; padding: 20px; color: var(--text-muted);' }
+                });
+                messageEl.createEl('p', { text: 'No daily note exists for today.' });
+                messageEl.createEl('p', { text: 'Create a daily note to use the timeline.' });
+                
+                // Find the unscheduled drop zone and clear it
+                const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
+                if (unscheduledDropZone) {
+                    unscheduledDropZone.empty();
+                }
+                
+                return;
+            }
             
             // Then load time blocks after tasks are loaded
             await this.timeBlockManager.loadTimeBlocks(this.currentDayFile);

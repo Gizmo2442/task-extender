@@ -1,6 +1,6 @@
 ---
 description: 
-globs: *.ts
-alwaysApply: false
+globs: 
+alwaysApply: true
 ---
 Check [project_structure.md](mdc:project_structure.md) to understand where to add and modify functionality.
