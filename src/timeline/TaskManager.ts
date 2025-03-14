@@ -15,8 +15,8 @@ export interface TaskIdentity {
 export class TaskManager {
     private readonly taskElements: Map<string, HTMLElement> = new Map();
     private readonly taskCache: Map<string, TaskIdentity> = new Map();
-    private readonly fileCache: Map<string, string> = new Map();
     private readonly lineTaskMap: Map<string, string> = new Map(); // Maps filePath:lineNumber to taskId
+    private readonly fileModificationCache: Map<string, number> = new Map(); // Maps filePath to last modification time
 
     // Define a constant for the emoji metadata pattern to ensure consistency
     private readonly METADATA_EMOJI_PATTERN = /(?:📅|✅|🆔|📝|⏫|🔼|🔽|⏬|📌|⚡|➕|⏳|📤|📥|💤|❗|❌|✔️|⏰|🔁|🔂|🛫|🛬|📍|🕐|🔍|🎯|🎫|💯|👥|👤|📋|✍️|👉|👈|⚠️|⏱️)/g;
@@ -50,8 +50,8 @@ export class TaskManager {
         return similarTasks;
     }
 
-    public createTask(taskText: string, filePath: string, lineNumber: number): TaskIdentity {
-        const existingTask = this.findMatchingTask(taskText, filePath, lineNumber);
+    public async createTask(taskText: string, filePath: string, lineNumber: number): Promise<TaskIdentity> {
+        const existingTask = await this.findMatchingTask(taskText, filePath, lineNumber);
         if (existingTask) {
             this.updateTaskContent(existingTask.identifier, taskText, filePath, lineNumber);
             return existingTask;
@@ -65,7 +65,9 @@ export class TaskManager {
 
     public async processFile(file: TFile, today: string) {
         const content = await this.app.vault.read(file);
-        this.fileCache.set(file.path, content);
+        
+        // Update the file modification cache
+        this.fileModificationCache.set(file.path, file.stat.mtime);
         
         // Keep track of tasks that existed in this file
         const previousTasksInFile = new Set(
@@ -79,7 +81,7 @@ export class TaskManager {
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             const line = lines[lineIndex];
             if (line.match(/^- \[[ x]\]/)) {
-                const taskIdentity = this.createTask(line, file.path, lineIndex + 1);
+                const taskIdentity = await this.createTask(line, file.path, lineIndex + 1);
                 
                 if (taskIdentity.metadata.dueDate && 
                     moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
@@ -204,15 +206,15 @@ export class TaskManager {
 
     public clearCaches() {
         this.taskCache.clear();
-        this.fileCache.clear();
+        this.fileModificationCache.clear();
     }
 
     public getTaskCache() {
         return this.taskCache;
     }
 
-    public getFileCache() {
-        return this.fileCache;
+    public getFileModificationCache() {
+        return this.fileModificationCache;
     }
 
     public getTaskElements() {
@@ -317,7 +319,7 @@ export class TaskManager {
             .trim();
     }
 
-    private findMatchingTask(taskText: string, filePath: string, lineNumber: number): TaskIdentity | undefined {
+    private async findMatchingTask(taskText: string, filePath: string, lineNumber: number): Promise<TaskIdentity | undefined> {
         const strippedContent = this.stripTaskMetadata(taskText);
         
         // Case 1: Check if we have a task at this exact line
@@ -340,13 +342,33 @@ export class TaskManager {
         }
 
         // Case 3: Look for similar tasks that have been removed from other files
-        const removedTasks = Array.from(this.taskCache.values())
-            .filter(task => {
-                const content = this.fileCache.get(task.filePath);
-                return !content?.includes(task.originalContent);
-            });
+        // First, filter tasks that might have been removed based on file modification times
+        const potentialRemovedTasks: TaskIdentity[] = [];
+        
+        for (const task of this.taskCache.values()) {
+            // Skip tasks from the current file
+            if (task.filePath === filePath) continue;
+            
+            const file = this.app.vault.getAbstractFileByPath(task.filePath);
+            if (!(file instanceof TFile)) continue;
+            
+            // Check if the file has been modified since we last processed it
+            const cachedMtime = this.fileModificationCache.get(task.filePath);
+            if (cachedMtime && file.stat.mtime <= cachedMtime) continue;
+            
+            // If the file has been modified or we don't have a cached time, check if the task still exists
+            const content = await this.app.vault.read(file);
+            
+            // Update the modification cache
+            this.fileModificationCache.set(task.filePath, file.stat.mtime);
+            
+            if (!content.includes(task.originalContent)) {
+                potentialRemovedTasks.push(task);
+            }
+        }
 
-        for (const task of removedTasks) {
+        // Now check if any of the potentially removed tasks match our current task
+        for (const task of potentialRemovedTasks) {
             if (this.areTasksSimilar(strippedContent, this.stripTaskMetadata(task.originalContent))) {
                 return task;
             }

@@ -106,8 +106,7 @@ export class TimelineView extends View implements ITimelineView {
         this.registerEvent(
             this.app.vault.on('modify', async (file) => {
                 if (file instanceof TFile && file.extension === 'md') {
-                    // Always clear the file cache and mark file as modified for markdown files
-                    this.taskManager.getFileCache().delete(file.path);
+                    // Mark file as modified for markdown files
                     this.modifiedFiles.add(file.path);
                     
                     // Schedule a debounced refresh to pick up any new tasks
