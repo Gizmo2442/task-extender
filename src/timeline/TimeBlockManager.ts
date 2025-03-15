@@ -195,16 +195,25 @@ export class TimeBlockManager {
         const topHandle = blockEl.createEl('div', { cls: 'time-block-handle top-handle' });
         const bottomHandle = blockEl.createEl('div', { cls: 'time-block-handle bottom-handle' });
 
+        // Create a scrollable container for tasks
+        const tasksContainer = blockEl.createEl('div', { cls: 'time-block-tasks-container' });
+        tasksContainer.style.overflow = 'auto';
+        tasksContainer.style.maxHeight = `calc(100% - 30px)`; // Estimate header height
+        tasksContainer.style.position = 'relative';
+        tasksContainer.style.marginTop = '4px'; // Add some space after the header
+        tasksContainer.style.paddingRight = '4px'; // Add some padding for scrollbar
+        tasksContainer.style.boxSizing = 'border-box'; // Include padding in the element's dimensions
+
         // Setup drag handlers for the block
         this.setupBlockDragHandlers(blockEl, block.id);
         
         // Setup resize handlers
         this.setupBlockResizeHandlers(blockEl, block.id, topHandle, bottomHandle);
 
-        this.setupBlockDropZone(blockEl, block.id);
+        this.setupBlockDropZone(tasksContainer, block.id);
 
         block.tasks.forEach(taskIdentity => {
-            this.renderTaskInBlock(taskIdentity, blockEl);
+            this.renderTaskInBlock(taskIdentity, tasksContainer);
         });
 
         parent.appendChild(blockEl);
@@ -461,22 +470,26 @@ export class TimeBlockManager {
     private setupBlockDropZone(element: HTMLElement, blockId: string) {
         element.addEventListener('dragover', (e) => {
             e.preventDefault();
-            element.addClass('drag-over');
+            const blockEl = element.closest('.time-block') as HTMLElement;
+            if (blockEl) blockEl.addClass('drag-over');
         });
 
         element.addEventListener('dragleave', () => {
-            element.removeClass('drag-over');
+            const blockEl = element.closest('.time-block') as HTMLElement;
+            if (blockEl) blockEl.removeClass('drag-over');
         });
 
         element.addEventListener('drop', async (e) => {
             e.preventDefault();
-            element.removeClass('drag-over');
+            const blockEl = element.closest('.time-block') as HTMLElement;
+            if (blockEl) blockEl.removeClass('drag-over');
+            
             const rawIdentifier = e.dataTransfer?.getData('text/plain');
             if (!rawIdentifier) return;
             
             await this.view.getTaskDragManager().handleTaskDrop(
                 rawIdentifier,
-                element,
+                blockEl || element,
                 this.timeBlocks,
                 blockId
             );
