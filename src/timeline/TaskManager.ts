@@ -63,7 +63,7 @@ export class TaskManager {
         return taskIdentity;
     }
 
-    public async processFile(file: TFile, today: string) {
+    public async processFile(file: TFile, currentDate: string) {
         const content = await this.app.vault.read(file);
         
         // Update the file modification cache
@@ -83,11 +83,23 @@ export class TaskManager {
             if (line.match(/^- \[[ x]\]/)) {
                 const taskIdentity = await this.createTask(line, file.path, lineIndex + 1);
                 
-                if (taskIdentity.metadata.dueDate && 
-                    moment(taskIdentity.metadata.dueDate).format('YYYY-MM-DD') === today) {
-                    await this.createTaskElement(line, taskIdentity);
-                }
+                // We always add the task to the cache, but only create elements for tasks due on or before current date
                 previousTasksInFile.delete(taskIdentity.identifier);
+                
+                // Include tasks that are due on or before the current date
+                const shouldInclude = !taskIdentity.metadata.dueDate || 
+                    moment(taskIdentity.metadata.dueDate).isSameOrBefore(moment(currentDate).endOf('day'));
+                    
+                if (shouldInclude) {
+                    await this.createTaskElement(line, taskIdentity);
+                } else {
+                    // If the task already has an element but is now due after the current date, remove it
+                    const existingElement = this.taskElements.get(taskIdentity.identifier);
+                    if (existingElement) {
+                        existingElement.remove();
+                        this.taskElements.delete(taskIdentity.identifier);
+                    }
+                }
             }
         }
         

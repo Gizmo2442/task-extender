@@ -303,20 +303,41 @@ If your plugin does not need CSS, delete this file.
 
 .timeline-controls {
     display: flex;
-    gap: 8px;
-    margin-left: 16px;
+    justify-content: flex-end;
+    margin-left: auto;
+}
+
+.timeline-date-nav {
+    display: flex;
+    gap: 5px;
+    margin-right: 10px;
+}
+
+.timeline-date-nav button {
+    background-color: var(--interactive-normal);
+    border: none;
+    color: var(--text-normal);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.timeline-date-nav button:hover {
+    background-color: var(--interactive-hover);
 }
 
 .timeline-controls button {
+    background-color: var(--interactive-normal);
+    border: none;
+    color: var(--text-normal);
     padding: 4px 8px;
-    cursor: pointer;
     border-radius: 4px;
-    border: 1px solid var(--background-modifier-border);
-    background: var(--background-primary);
+    cursor: pointer;
 }
 
 .timeline-controls button:hover {
-    background: var(--background-modifier-hover);
+    background-color: var(--interactive-hover);
 }
 
 .time-block-handle {

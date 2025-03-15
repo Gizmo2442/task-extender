@@ -22,6 +22,8 @@ export class TimelineView extends View implements ITimelineView {
     private timeBlockManager: TimeBlockManager;
     private taskDragManager: TaskDragManager;
     private debouncedRefresh: () => void;
+    private currentDate: moment.Moment;
+    private headerTitleEl: HTMLElement;
 
     constructor(leaf: WorkspaceLeaf, plugin: TaskPlannerPlugin) {
         super(leaf);
@@ -30,6 +32,7 @@ export class TimelineView extends View implements ITimelineView {
         this.timeBlockManager = new TimeBlockManager(this.app, this, this.hourHeight);
         this.taskDragManager = new TaskDragManager(this.app, this);
         this.debouncedRefresh = debounce(this.refreshView.bind(this), 1000, true);
+        this.currentDate = moment(); // Initialize with today's date
     }
 
     getViewType(): string {
@@ -64,6 +67,10 @@ export class TimelineView extends View implements ITimelineView {
         return this.taskDragManager;
     }
 
+    getCurrentDate(): moment.Moment {
+        return this.currentDate;
+    }
+
     async onOpen() {
         const { containerEl } = this;
         containerEl.empty();
@@ -73,10 +80,42 @@ export class TimelineView extends View implements ITimelineView {
         
         // Create header
         const headerEl = mainContainer.createEl('div', { cls: 'timeline-header' });
-        headerEl.createEl('h4', { text: `Timeline for ${moment().format('MMMM D, YYYY')}` });
+        this.headerTitleEl = headerEl.createEl('h4', { text: `Timeline for ${this.currentDate.format('MMMM D, YYYY')}` });
         
         // Create controls
         const controlsEl = headerEl.createEl('div', { cls: 'timeline-controls' });
+        
+        // Add date navigation buttons
+        const dateNavEl = controlsEl.createEl('div', { cls: 'timeline-date-nav' });
+        
+        const prevBtn = dateNavEl.createEl('button', { text: '◀ Previous' });
+        prevBtn.setAttribute('title', 'Previous Day');
+        prevBtn.addEventListener('click', async () => {
+            this.currentDate = moment(this.currentDate).subtract(1, 'day');
+            this.updateHeaderTitle();
+            this.taskManager.clearCaches();
+            await this.refreshView();
+        });
+        
+        const todayBtn = dateNavEl.createEl('button', { text: 'Today' });
+        todayBtn.setAttribute('title', 'Go to Today');
+        todayBtn.addEventListener('click', async () => {
+            this.currentDate = moment();
+            this.updateHeaderTitle();
+            this.taskManager.clearCaches();
+            await this.refreshView();
+        });
+        
+        const nextBtn = dateNavEl.createEl('button', { text: 'Next ▶' });
+        nextBtn.setAttribute('title', 'Next Day');
+        nextBtn.addEventListener('click', async () => {
+            this.currentDate = moment(this.currentDate).add(1, 'day');
+            this.updateHeaderTitle();
+            this.taskManager.clearCaches();
+            await this.refreshView();
+        });
+        
+        // Add refresh button
         const refreshBtn = controlsEl.createEl('button', { text: '🔄' });
         refreshBtn.setAttribute('title', 'Refresh Timeline');
         refreshBtn.addEventListener('click', async () => {
@@ -243,7 +282,7 @@ export class TimelineView extends View implements ITimelineView {
         
         // If there's no daily note, we can't create time blocks
         if (!this.currentDayFile) {
-            new Notice("Cannot create time blocks: No daily note exists for today");
+            new Notice(`Cannot create time blocks: No daily note exists for ${this.currentDate.format('MMMM D, YYYY')}`);
             return;
         }
         
@@ -288,15 +327,21 @@ export class TimelineView extends View implements ITimelineView {
         this.timelineEl.appendChild(previewEl);
     }
 
+    private updateHeaderTitle() {
+        if (this.headerTitleEl) {
+            this.headerTitleEl.setText(`Timeline for ${this.currentDate.format('MMMM D, YYYY')}`);
+        }
+    }
+
     private async loadTasks() {
-        const today = moment().format('YYYY-MM-DD');
+        const currentDateStr = this.currentDate.format('YYYY-MM-DD');
         
         // If this is the initial load, process all files
         if (this.taskManager.getTaskCache().size === 0) {
             const files = this.app.vault.getMarkdownFiles();
             
             for (const file of files) {
-                await this.taskManager.processFile(file, today);
+                await this.taskManager.processFile(file, currentDateStr);
             }
         } else {
             // For subsequent loads, only process modified files
@@ -305,7 +350,7 @@ export class TimelineView extends View implements ITimelineView {
                 .filter((file): file is TFile => file instanceof TFile);
                 
             for (const file of modifiedFiles) {
-                await this.taskManager.processFile(file, today);
+                await this.taskManager.processFile(file, currentDateStr);
             }
             
             // Clear the modified files set after processing
@@ -314,9 +359,9 @@ export class TimelineView extends View implements ITimelineView {
     }
 
     private async loadScheduledTasks() {
-        const today = moment().format('YYYY-MM-DD');
+        const currentDateStr = this.currentDate.format('YYYY-MM-DD');
         const dailyNotes = this.app.vault.getMarkdownFiles().filter(file => 
-            file.basename === today
+            file.basename === currentDateStr
         );
 
         if (dailyNotes.length > 0) {
@@ -345,19 +390,25 @@ export class TimelineView extends View implements ITimelineView {
             // Recreate time slots
             this.createTimeSlots();
             
+            // Update the header title
+            this.updateHeaderTitle();
+            
             // If there's no daily note, show a message
             if (!this.currentDayFile) {
                 const messageEl = this.timelineEl.createEl('div', { 
                     cls: 'timeline-no-daily-note-message',
                     attr: { style: 'text-align: center; padding: 20px; color: var(--text-muted);' }
                 });
-                messageEl.createEl('p', { text: 'No daily note exists for today.' });
+                messageEl.createEl('p', { text: `No daily note exists for ${this.currentDate.format('MMMM D, YYYY')}.` });
                 messageEl.createEl('p', { text: 'Create a daily note to use the timeline.' });
                 
                 // Find the unscheduled drop zone and clear it
                 const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
                 if (unscheduledDropZone) {
                     unscheduledDropZone.empty();
+                    
+                    // Still show unscheduled tasks even if there's no daily note
+                    this.showUnscheduledTasks(unscheduledDropZone);
                 }
                 
                 return;
@@ -370,24 +421,7 @@ export class TimelineView extends View implements ITimelineView {
             const unscheduledDropZone = this.containerEl.querySelector('.unscheduled-drop-zone');
             if (unscheduledDropZone) {
                 unscheduledDropZone.empty();
-                
-                // Add unscheduled tasks to the unscheduled drop zone
-                this.taskManager.getTaskElements().forEach((taskEl, identifier) => {
-                    let isScheduled = false;
-                    this.timeBlockManager.getTimeBlocks().forEach(block => {
-                        if (block.tasks.some(taskIdentity => taskIdentity.identifier === identifier)) {
-                            isScheduled = true;
-                        }
-                    });
-
-                    if (!isScheduled) {
-                        const taskIdentity = this.taskManager.getTaskCache().get(identifier);
-                        if (taskIdentity) {
-                            const clonedTask = this.taskManager.setupClonedTask(taskEl, taskIdentity);
-                            unscheduledDropZone.appendChild(clonedTask);
-                        }
-                    }
-                });
+                this.showUnscheduledTasks(unscheduledDropZone);
             }
             
             // Restore scroll position
@@ -396,6 +430,36 @@ export class TimelineView extends View implements ITimelineView {
         } catch (error) {
             console.error('Error refreshing timeline view:', error);
         }
+    }
+
+    private showUnscheduledTasks(dropZone: Element) {
+        // Filter tasks to only show those due on or before the current date
+        const currentDateMoment = this.currentDate.clone().endOf('day');
+        
+        this.taskManager.getTaskElements().forEach((taskEl, identifier) => {
+            let isScheduled = false;
+            this.timeBlockManager.getTimeBlocks().forEach(block => {
+                if (block.tasks.some(taskIdentity => taskIdentity.identifier === identifier)) {
+                    isScheduled = true;
+                }
+            });
+
+            if (!isScheduled) {
+                const taskIdentity = this.taskManager.getTaskCache().get(identifier);
+                if (taskIdentity) {
+
+                    // Only show tasks that have a due date and are due on or before the current date
+                    const shouldShow = taskIdentity.metadata.dueDate && 
+                        moment(taskIdentity.metadata.dueDate).isSameOrBefore(currentDateMoment);
+                        
+                    if (shouldShow) 
+                    {
+                        const clonedTask = this.taskManager.setupClonedTask(taskEl, taskIdentity);
+                        dropZone.appendChild(clonedTask);
+                    }
+                }
+            }
+        });
     }
 
     onunload() {
