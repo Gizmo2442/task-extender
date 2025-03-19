@@ -24,6 +24,8 @@ export class TimelineView extends View implements ITimelineView {
     private debouncedRefresh: () => void;
     private currentDate: moment.Moment;
     private headerTitleEl: HTMLElement;
+    private currentTimeIndicator: HTMLElement | null = null;
+    private timeIndicatorInterval: number | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: TaskPlannerPlugin) {
         super(leaf);
@@ -156,6 +158,42 @@ export class TimelineView extends View implements ITimelineView {
 
         // Initial load
         await this.refreshView();
+    }
+
+    private initializeTimeIndicator() {
+        // Clear any existing interval first
+        if (this.timeIndicatorInterval) {
+            window.clearInterval(this.timeIndicatorInterval);
+        }
+
+        // Create the time indicator element if it doesn't exist
+        if (!this.currentTimeIndicator) {
+            this.currentTimeIndicator = this.timelineEl.createEl('div', { cls: 'current-time-indicator' });
+        }
+
+        // Update the indicator position immediately
+        this.updateTimeIndicator();
+
+        // Set up the interval to update the indicator
+        this.timeIndicatorInterval = window.setInterval(() => {
+            this.updateTimeIndicator();
+        }, 60000); // Update every minute
+    }
+
+    private updateTimeIndicator() {
+        if (!this.currentTimeIndicator || !this.currentDate) return;
+
+        const now = moment();
+        const isToday = now.isSame(this.currentDate, 'day');
+
+        // Only show the indicator if we're viewing today
+        this.currentTimeIndicator.style.display = isToday ? 'block' : 'none';
+
+        if (isToday) {
+            const currentHour = now.hours() + now.minutes() / 60;
+            const top = currentHour * this.hourHeight;
+            this.currentTimeIndicator.style.top = `${top}px`;
+        }
     }
 
     private createTimeSlots() {
@@ -384,8 +422,14 @@ export class TimelineView extends View implements ITimelineView {
                 this.loadTasks()
             ]);
             
+            // Store the current time indicator element before clearing
+            const oldTimeIndicator = this.currentTimeIndicator;
+            
             // Clear the timeline
             this.timelineEl.empty();
+            
+            // Reset the current time indicator reference since we cleared it
+            this.currentTimeIndicator = null;
             
             // Recreate time slots
             this.createTimeSlots();
@@ -423,6 +467,9 @@ export class TimelineView extends View implements ITimelineView {
                 unscheduledDropZone.empty();
                 this.showUnscheduledTasks(unscheduledDropZone);
             }
+            
+            // Initialize the time indicator after everything else is set up
+            this.initializeTimeIndicator();
             
             // Restore scroll position
             this.timelineEl.scrollTop = scrollPosition;
@@ -463,6 +510,10 @@ export class TimelineView extends View implements ITimelineView {
     }
 
     onunload() {
+        // Clear the time indicator interval
+        if (this.timeIndicatorInterval) {
+            window.clearInterval(this.timeIndicatorInterval);
+        }
         this.taskManager.clearCaches();
     }
 } 

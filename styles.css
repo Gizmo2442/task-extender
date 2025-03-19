@@ -522,3 +522,24 @@ body.timeline-resizing .unscheduled-tasks {
 .task-filepath {
     margin-top: 4px;
 }
+
+.current-time-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: rgb(146, 0, 0);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.current-time-indicator::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    background-color: rgb(146, 0, 0);
+    border-radius: 50%;
+}
